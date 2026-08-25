@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException ,status, Request
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from contextlib import asynccontextmanager
@@ -63,3 +63,36 @@ def view(item: tesigg):
         return {"data": new_post}
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"حدث خطأ أثناء الإدخال: {str(error)}")
+
+@app.get("/{id}")
+def get_student(id: int):
+    # 1. فحص أمان للتأكد من أن الاتصال بقاعدة البيانات يعمل
+    if db_connection is None:
+        raise HTTPException(status_code=500, detail="Database connection is offline")
+    
+    try:
+        # 2. إنشاء الـ cursor من الاتصال المركزي الدائم
+        cursor = db_connection.cursor()
+        
+        # 3. تنفيذ استعلام جلب الطالب بناءً على الـ id من جدول studant
+        cursor.execute("""SELECT * FROM studant WHERE id = %s """, (id,))
+        course = cursor.fetchone()
+        
+        # 4. إغلاق الـ cursor بعد جلب البيانات
+        cursor.close()
+        
+        # 5. التحقق إذا كان المعرّف (id) غير موجود في الجدول
+        if not course:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Student with id: {id} was not found"
+            )
+        
+        # 6. إرجاع تفاصيل الطالب بنجاح
+        return {"Course_detail": course}
+        
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"حدث خطأ أثناء جلب البيانات: {str(error)}")
+ 
