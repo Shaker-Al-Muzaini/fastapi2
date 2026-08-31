@@ -138,7 +138,3 @@ async def lifespan(app: FastAPI):
 #         "date_posted": "April 21, 2026",
 #     },
 # ]
- @app.get("/posts/g")
- def get_posts():
-     return posts
-
