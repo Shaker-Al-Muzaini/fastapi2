@@ -1,11 +1,20 @@
+<<<<<<< HEAD
 # from fastapi import FastAPI, HTTPException ,status, Request
 # import psycopg2
 # from psycopg2.extras import RealDictCursor
 # from contextlib import asynccontextmanager
 # from pydantic import BaseModel
+=======
+from fastapi import FastAPI, HTTPException ,status, Request
+import psycopg2 
+from psycopg2.extras import RealDictCursor
+from contextlib import asynccontextmanager
+from pydantic import BaseModel
+>>>>>>> 55a05f8b405d0c4400d42dacf1e37bba2457712b
 
 # db_connection = None
 
+<<<<<<< HEAD
 # @asynccontextmanager
 # async def lifespan(app: FastAPI):
 #     global db_connection
@@ -20,6 +29,23 @@
 #         print('Successfully connected to Database permanently!')
 #     except Exception as error:
 #         print("Database connection failed:", error)
+=======
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global db_connection
+    try:
+        db_connection = psycopg2.connect(
+            host='localhost', 
+            database='test', 
+            user='postgres', 
+            user='postgres2', 
+            password='',
+            cursor_factory=RealDictCursor
+        )
+        print('Successfully connected to Database permanently!')
+    except Exception as error:
+        print("Database connection failed:", error)
+>>>>>>> 55a05f8b405d0c4400d42dacf1e37bba2457712b
     
 #     yield
 #     if db_connection:
