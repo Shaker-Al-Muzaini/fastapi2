@@ -14,6 +14,7 @@ async def lifespan(app: FastAPI):
             host='localhost', 
             database='test', 
             user='postgres', 
+            user='postgres2', 
             password='',
             cursor_factory=RealDictCursor
         )
