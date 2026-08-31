@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException ,status, Request
-import psycopg2
+import psycopg2 
 from psycopg2.extras import RealDictCursor
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
