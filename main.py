@@ -15,13 +15,13 @@ posts: list[dict] = [
     },
 ]
 
-from fastapi import FastAPI , Request , HTTPException, status
+from fastapi import FastAPI , Request ,HTTPException, status
 from httpx import post, request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
-from schemas.schemPost import PostResponse, PostCreate
+from schemas.schemPost import PostResponse,PostCreate
 app = FastAPI()
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -71,10 +71,7 @@ def create_post(post: PostCreate):
     new_id = max(p["id"] for p in posts) + 1 if posts else 1
     new_post = {
         "id": new_id,
-        "author": post.author,
-        "title": post.title,
-        "content": post.content,
-        "date_posted": "2026-04-20T00:00:00",
+        **post.model_dump(),
     }
     posts.append(new_post)
     return new_post

@@ -1,4 +1,4 @@
-from pydantic import BaseModel,Field,ConfigDict
+from pydantic import BaseModel,Field,ConfigDict,ValidationError
 from datetime import datetime
 
 class PostBase(BaseModel):
@@ -8,6 +8,7 @@ class PostBase(BaseModel):
 
 class PostCreate(PostBase):
     pass
+   
 
 
 class PostResponse(PostBase):
