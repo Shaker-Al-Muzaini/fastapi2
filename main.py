@@ -1,78 +1,140 @@
-posts: list[dict] = [
-    {
-        "id": 1,
-        "author": "Corey Schafer",
-        "title": "FastAPI is Awesome",
-        "content": "This framework is really easy to use and super fast.",
-        "date_posted": "2026-04-20T00:00:00",
-    },
-    {
-        "id": 2,
-        "author": "Jane Doe",
-        "title": "Python is Great for Web Development",
-        "content": "Python is a great language for web development, and FastAPI makes it even better.",
-        "date_posted": "2026-07-20T00:00:00",
-    },
-]
-
-from fastapi import FastAPI , Request ,HTTPException, status
-from httpx import post, request
+from fastapi import Depends, FastAPI , Request ,HTTPException, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
-from schemas.schemPost import PostResponse,PostCreate
+from schemas.schemPost import PostResponse, PostCreate, UserResponse, UserCreate
+from datetime import datetime
+from typing import Annotated
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+import schemas.model
+from schemas.database import Base, get_db, engine
+
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI()
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/media", StaticFiles(directory="media"), name="media")
 templates = Jinja2Templates(directory="templates")
-@app.get("/",response_class=HTMLResponse, name="home",response_model=list[PostResponse])
-def read_root(request: Request):
-    return templates.TemplateResponse(request,"home.html",{"posts": posts, "title": "Home Page"})
-# عندما نقوم بارجع قيمه josn api يتم تطبيق  PostResponse ام في ارجاع html لا يتم التطبيق  
 
-# @app.get("/",response_model=list[PostResponse])
-# def read_root():
-#     return posts
+# ==================== صفحات الـ HTML (Frontend) ====================
 
-@app.get("/sn/{id}",
-         name="sn",
-         response_model=PostResponse
-        )
-def read_sn( id: str,request: Request):
-    post = next((p for p in posts if str(p["id"]) == id), None)
-    accept_header = request.headers.get("accept", "")
-    if "application/json" in accept_header:
-        if post:
-            return JSONResponse(content={"success": True, "post": post, "errors": []}, status_code=200)
-
-        # إذا لم يجد المنشور يعيد خطأ JSON برقم 404
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not exist.")
-
-    if post:
-        return templates.TemplateResponse(
-            request, "index.html",
-            {"posts": [post], "title": post["title"], "errors": []},
-            status_code=200
-        )
-
+# 1. الصفحة الرئيسية
+@app.get("/", include_in_schema=False, name="home")
+@app.get("/posts", include_in_schema=False, name="posts")
+def home(request: Request, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(schemas.model.Post))
+    posts = result.scalars().all()
     return templates.TemplateResponse(
-        request, "index.html",
-        {"posts": [], "title": "Post Not Found", "errors": ["Post not exist."]},
-        status_code=404
+        request,
+        "home.html",
+        {"posts": posts, "title": "Home"},
     )
 
-@app.post(
-    "/posts",
-    response_model=PostResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_post(post: PostCreate):
-    new_id = max(p["id"] for p in posts) + 1 if posts else 1
-    new_post = {
-        "id": new_id,
-        **post.model_dump(),
-    }
-    posts.append(new_post)
-    return new_post
+# 2. صفحة منشورات مستخدم معين (تم تعديل المسار لمنع التضارب مع الـ API)
+@app.get("/users/{user_id}/posts/page", include_in_schema=False, name="user_posts")
+def user_posts_page(request: Request, user_id: int, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(schemas.model.User).where(schemas.model.User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+    result = db.execute(select(schemas.model.Post).where(schemas.model.Post.user_id == user_id))
+    posts = result.scalars().all()
+    return templates.TemplateResponse(
+        request,
+        "user_posts.html",
+        {"posts": posts, "user": user, "title": f"{user.username}'s Posts"},
+    )
 
+# 3. صفحة تفاصيل منشور فردي (تمت إضافة المائلة / وتوجيهها لملف تفاصيل المنشور)
+@app.get("/posts/{post_id}", include_in_schema=False, name="post_page")
+def get_post_page(request: Request, post_id: int, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(schemas.model.Post).where(schemas.model.Post.id == post_id))
+    post = result.scalars().first()
+    
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+        
+    # هنا نقوم باستدعاء قالب تفاصيل المنشور الفردي وتمريره كـ post مفرد
+    return templates.TemplateResponse(
+        request,
+        "index.html", 
+        {"post": post, "title": post.title}
+    )
+
+
+# ==================== واجهات برمجة التطبيقات (APIs - JSON) ====================
+
+@app.post("/api/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
+    existing_user = db.execute(
+        select(schemas.model.User).where(schemas.model.User.username == user.username)
+    ).scalar_one_or_none()
+
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
+        
+    existing_email = db.execute(
+        select(schemas.model.User).where(schemas.model.User.email == user.email)
+    ).scalar_one_or_none()
+
+    if existing_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exists")
+
+    new_user = schemas.model.User(**user.model_dump())
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
+
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+def get_user_api(user_id: int, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(schemas.model.User).where(schemas.model.User.id == user_id))
+    user = result.scalars().first()
+    if user:
+        return user
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+@app.get("/api/users/{user_id}/posts", response_model=list[PostResponse])
+def get_user_posts_api(user_id: int, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(schemas.model.User).where(schemas.model.User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    result = db.execute(select(schemas.model.Post).where(schemas.model.Post.user_id == user_id))
+    posts = result.scalars().all()
+    return posts
+@app.get("/posts/{post_id}", include_in_schema=False, name="post_page")
+def get_post(request: Request, post_id: int, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(
+        select(schemas.model.Post).where(schemas.model.Post.id == post_id)
+    )
+    post = result.scalars().first()
+    
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+        
+    # التعديل هنا: وجهنا الكود لفتح ملف index.html وتمرير المنشور ككائن مفرد
+    return templates.TemplateResponse(
+        request,
+        "index.html", 
+        {"post": post, "title": post.title}
+    )
+
+
+
+@app.post("/api/posts", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
+def create_post(post: PostCreate, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(schemas.model.User).where(schemas.model.User.id == post.user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+    new_post = schemas.model.Post(title=post.title, content=post.content, user_id=post.user_id)
+    db.add(new_post)
+    db.commit()
+    db.refresh(new_post) 
+    return new_post
