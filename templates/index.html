@@ -1,24 +1,66 @@
-{% extends "layout.html" %}
-{% block content %}
-<article class="content-section py-3 px-4 mb-4">
-  <div class="d-flex align-items-start gap-4">
-    <!-- عرض الصورة الشخصية للكاتب -->
-    <img class="rounded-circle article-img flex-shrink-0"
-         src="{{ post.author.image_path }}"
-         alt="{{ post.author.username }}'s profile picture"
-         width="64"
-         height="64"
-         loading="lazy">
-    <div class="flex-grow-1">
-      <div class="article-metadata mb-2">
-        <!-- روابط الكاتب والتاريخ -->
-        <a class="me-2" href="{{ url_for('user_posts', user_id=post.author.id) }}">{{ post.author.username }}</a>
-        <small class="text-body-secondary">{{ post.date_posted.strftime("%B %d, %Y") }}</small>
-      </div>
-      <!-- عنوان ومحتوى المنشور الفردي -->
-      <h2 class="article-title">{{ post.title }}</h2>
-      <p class="article-content mt-3">{{ post.content }}</p>
+{% extends "layout.html" %} 
+{% block content %} 
+    <article class="content-section py-4 px-4 mb-4"> 
+        <div class="d-flex align-items-start gap-4"> 
+            <!-- صورة كاتب المقال -->
+            <img class="rounded-circle article-img flex-shrink-0" 
+                 src="{{ post.author.image_path }}" 
+                 alt="{{ post.author.username }}'s profile picture" 
+                 width="64" 
+                 height="64" 
+                 loading="lazy"> 
+            
+            <div class="flex-grow-1"> 
+                <!-- ميتاداتا الكاتب والتاريخ وأزرار التحكم -->
+                <div class="article-metadata mb-3 d-flex justify-content-between align-items-center">
+                    <div>
+                        <a class="me-2 fw-bold text-decoration-none" href="{{ url_for('user_posts', user_id=post.author.id) }}">
+                            {{ post.author.username }}
+                        </a> 
+                        <small class="text-body-secondary">{{ post.date_posted.strftime("%B %d, %Y") }}</small> 
+                    </div>
+                    
+                    <!-- أزرار التعديل والحذف ظاهرة ومفعلة مباشرة في صفحة التفاصيل -->
+                    <div>
+                        <a class="btn btn-secondary btn-sm me-1" href="{{ url_for('update_post', post_id=post.id) }}">Update</a>
+                        <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete</button>
+                    </div>
+                </div> 
+                
+                <!-- عنوان المنشور الكامل -->
+                <h1 class="article-title text-body mb-3 fs-2 fw-bold">
+                    {{ post.title }}
+                </h1> 
+                
+                <hr class="text-body-secondary">
+                
+                <!-- محتوى المنشور الكامل -->
+                <p class="article-content text-body fs-5 mt-3 text-wrap" style="line-height: 1.7; white-space: pre-wrap;">
+                    {{ post.content }}
+                </p> 
+            </div> 
+        </div> 
+    </article> 
+
+    <!-- نافذة تأكيد الحذف التفاعلية (Modal) -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content bg-body text-body border-0 shadow-lg">
+                <div class="modal-header border-bottom-0">
+                    <h5 class="modal-title fw-bold" id="deleteModalLabel">Delete Post?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to delete this post? This action cannot be undone.
+                </div>
+                <div class="modal-footer border-top-0 d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <!-- فورم الحذف يرسل الطلب مباشرة للفانكشن التي قمنا ببنائها في الخطوة السابقة -->
+                    <form action="{{ url_for('delete_post', post_id=post.id) }}" method="POST">
+                        <input class="btn btn-danger" type="submit" value="Delete">
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
-</article>
 {% endblock content %}

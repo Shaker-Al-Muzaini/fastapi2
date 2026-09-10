@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="content-section py-4 px-4 mb-4">
+    <!-- تعبئة عنوان الفورم ديناميكياً (Update Post أو New Post) -->
+    <form method="POST" action="">
+        <fieldset class="form-group">
+            <legend class="border-bottom mb-4 text-body pb-2 fw-bold">{{ legend if legend else "New Post" }}</legend>
+            
+            <!-- حقل العنوان -->
+            <div class="mb-3">
+                <label for="title" class="form-label text-body">Title</label>
+                <input type="text" 
+                       class="form-control bg-body text-body" 
+                       id="title" 
+                       name="title" 
+                       value="{{ post.title if post else '' }}" 
+                       required>
+            </div>
+            
+            <!-- حقل المحتوى -->
+            <div class="mb-3">
+                <label for="content" class="form-label text-body">Content</label>
+                <textarea class="form-control bg-body text-body" 
+                          id="content" 
+                          name="content" 
+                          rows="8" 
+                          required>{{ post.content if post else '' }}</textarea>
+            </div>
+        </fieldset>
+        
+        <!-- زر الحفظ والإرسال -->
+        <div class="pt-2">
+            <button type="submit" class="btn btn-primary">Save Post</button>
+            <a href="{{ url_for('post_page', post_id=post.id) if post else '/' }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock content %}

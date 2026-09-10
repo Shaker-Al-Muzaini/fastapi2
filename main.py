@@ -138,3 +138,61 @@ def create_post(post: PostCreate, db: Annotated[Session, Depends(get_db)]):
     db.commit()
     db.refresh(new_post) 
     return new_post
+
+
+
+from fastapi.responses import RedirectResponse
+from fastapi import Form
+
+# 📝 1. عرض صفحة تعديل المنشور
+@app.get("/posts/{post_id}/update", include_in_schema=False, name="update_post")
+def update_post_page(request: Request, post_id: int, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(schemas.model.Post).where(schemas.model.Post.id == post_id))
+    post = result.scalars().first()
+    
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+        
+    # هنا نقوم بفتح قالب مخصص لتعديل البيانات ونمرر المنشور الحالي
+    return templates.TemplateResponse(
+        request,
+        "create_post.html",  # سنعيد استخدام قالب إنشاء المنشور بعد تعديله ليدعم التعديل أيضاً
+        {"post": post, "title": "Update Post", "legend": "Update Post"}
+    )
+
+# 💾 2. معالجة بيانات التعديل القادمة من الفورم
+@app.post("/posts/{post_id}/update", include_in_schema=False)
+def update_post(
+    post_id: int, 
+    title: Annotated[str, Form()], 
+    content: Annotated[str, Form()], 
+    db: Annotated[Session, Depends(get_db)]
+):
+    result = db.execute(select(schemas.model.Post).where(schemas.model.Post.id == post_id))
+    post = result.scalars().first()
+    
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    # تحديث الحقول في قاعدة البيانات
+    post.title = title
+    post.content = content
+    db.commit()
+    
+    # بعد النجاح، يتم توجيهه إلى صفحة تفاصيل المنشور المعدّل
+    return RedirectResponse(url=f"/posts/{post.id}", status_code=status.HTTP_302_FOUND)
+
+# ❌ 3. تنفيذ عملية الحذف
+@app.post("/posts/{post_id}/delete", include_in_schema=False, name="delete_post")
+def delete_post(post_id: int, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(schemas.model.Post).where(schemas.model.Post.id == post_id))
+    post = result.scalars().first()
+    
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+        
+    db.delete(post)
+    db.commit()
+    
+    # بعد الحذف بنجاح، يتم توجيهه إلى الصفحة الرئيسية
+    return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
