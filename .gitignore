@@ -20,4 +20,4 @@ __pycache__/
 .env
 
 # 🖼️ مجلد ميديا المرفوعات (اختياري: إذا كنت لا تريد رفع صور المستخدمين التجريبية)
-media/profile_pics/
+media/profile_pics/user_*
