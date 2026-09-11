@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Request, HTTPException, status, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Annotated
 from sqlalchemy import select
@@ -36,6 +36,7 @@ async def create_post(post: PostCreate, db: Annotated[AsyncSession, Depends(get_
 # 📝 عمليات تعديل وحذف المنشورات (Frontend Actions)
 # ===========================================================================
 
+# 1. دالة عرض صفحة التعديل (تم إعادتها لكي تفتح استمارة create_post بنجاح)
 @router.get("/{post_id}/update", include_in_schema=False, name="update_post")
 async def update_post_page(request: Request, post_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     result = await db.execute(select(schemas.model.Post).where(schemas.model.Post.id == post_id))
@@ -50,7 +51,8 @@ async def update_post_page(request: Request, post_id: int, db: Annotated[AsyncSe
         {"post": post, "title": "Update Post", "legend": "Update Post"}
     )
 
-@router.post("/{post_id}/update", include_in_schema=False)
+# 2. دالة استقبال ومعالجة التعديل الفعلي (تستقبل PUT لتعمل مع استمارة HTMX بدون خطأ 405)
+@router.put("/{post_id}/update", include_in_schema=False)
 async def update_post(
     post_id: int, 
     title: Annotated[str, Form()], 
@@ -63,13 +65,17 @@ async def update_post(
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
     
+    # تحديث الحقول في قاعدة البيانات
     post.title = title
     post.content = content
     await db.commit()
     
-    # تحويل آمن باستخدام المتغير post_id لمنع أخطاء السيرفر
-    return RedirectResponse(url=f"/posts/{post_id}", status_code=status.HTTP_302_FOUND)
+    # استجابة توجيهية متوافقة كلياً مع HTMX للانتقال الفوري لصفحة المقال المعدل
+    response = HTMLResponse(content="تم التحديث بنجاح")
+    response.headers["HX-Redirect"] = f"/posts/{post_id}"
+    return response
 
+# 3. دالة حذف المنشور
 @router.post("/{post_id}/delete", include_in_schema=False, name="delete_post")
 async def delete_post(post_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     result = await db.execute(select(schemas.model.Post).where(schemas.model.Post.id == post_id))

@@ -2,25 +2,59 @@
 
 {% block content %}
 <div class="content-section py-4 px-4 mb-4" style="direction: rtl; text-align: right;">
-    <div class="d-flex align-items-center gap-4 border-bottom pb-4 flex-row-reverse justify-content-end">
-        <!-- 🖼️ صورة الملف الشخصي (تتحدث تلقائياً بالـ JavaScript) -->
-        <img id="profile-display-img" class="rounded-circle account-img border" 
-             src="{{ user.image_path }}" 
+    
+    <!-- 🖼️ 1. قسم بيانات المستخدم الموحد (يستهدفه الـ HTMX للتحديث اللحظي) -->
+    <div id="profile-card" class="d-flex align-items-center gap-4 border-bottom pb-4 flex-row-reverse justify-content-end">
+        <!-- استخدام الرقم العشوائي لمنع كاش المتصفح القديم للصورة وعرض المحدثة فورا -->
+        <img class="rounded-circle account-img border" 
+             src="{{ user.image_path }}?t={{ range(1, 100000) | random }}" 
              alt="{{ user.username }}'s profile" 
              width="125" height="125"
              style="object-fit: cover;">
         
         <div>
-            <!-- 👤 البيانات الشخصية المعروضة حالياً -->
-            <h2 id="profile-display-username" class="account-heading fw-bold mb-1">{{ user.username }}</h2>
-            <p id="profile-display-email" class="text-secondary mb-3">{{ user.email }}</p>
+            <h2 class="account-heading fw-bold mb-1">{{ user.username }}</h2>
+            <p class="text-secondary mb-3">{{ user.email }}</p>
             
-            <!-- 🔘 زر فتح نافذة التعديل المنبثقة -->
             <button type="button" class="btn btn-outline-info btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#editProfileModal">
                 تعديل بيانات الحساب
             </button>
         </div>
     </div>
+
+    <!-- 📝 2. قسم عرض منشورات المستخدم المدمج بالأسفل -->
+    <h1 class="my-4 text-body text-start" style="text-align: right !important;">
+        منشورات المستخدم 
+        <small class="text-body-secondary fs-4">({{ posts|length }} منشور)</small>
+    </h1>
+
+    {% for post in posts %} 
+        <article class="content-section py-3 px-4 mb-4 text-start" style="text-align: right !important;"> 
+            <div class="d-flex align-items-start gap-4 flex-row-reverse"> 
+                <img class="rounded-circle article-img flex-shrink-0" 
+                     src="{{ user.image_path }}" 
+                     alt="{{ user.username }}'s picture" 
+                     width="64" height="64" loading="lazy" style="object-fit: cover;"> 
+                
+                <div class="flex-grow-1"> 
+                    <div class="article-metadata mb-2"> 
+                        <span class="me-2 fw-bold text-body">{{ user.username }}</span> 
+                        <small class="text-body-secondary">{{ post.date_posted.strftime("%B %d, %Y") }}</small> 
+                    </div> 
+                    <h2> 
+                        <a class="article-title text-decoration-none text-body fw-bold" href="{{ url_for('post_page', post_id=post.id) }}">
+                            {{ post.title }}
+                        </a> 
+                    </h2> 
+                    <p class="article-content text-body-secondary mt-2">{{ post.content }}</p> 
+                </div> 
+            </div> 
+        </article> 
+    {% else %}
+        <div class="alert alert-info text-center" role="alert">
+            هذا المستخدم لم يقم بنشر أي مقالات بعد.
+        </div>
+    {% endfor %} 
 </div>
 
 <!-- 📦 النافذة المنبثقة للتعديل (Bootstrap Modal) -->
@@ -32,10 +66,19 @@
                 <button type="button" class="btn-close m-0" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4 text-start" style="text-align: right !important;">
-                <!-- 🚨 تنبيه مخصص لعرض الأخطاء القادمة من السيرفر (مثل تكرار الاسم) -->
                 <div id="error-alert" class="alert alert-danger d-none" role="alert"></div>
 
-                <form id="edit-profile-form" enctype="multipart/form-data">
+                <!-- سحر الـ HTMX: يرسل التحديث ويعيد حقن كود البطاقة ويغلق الـ Modal تلقائياً -->
+                <form hx-put="/api/users/{{ user.id }}/update-html"
+                      hx-encoding="multipart/form-data"
+                      hx-target="#profile-card"
+                      hx-swap="outerHTML"
+                      hx-on::after-request="if(event.detail.successful) { 
+                          bootstrap.Modal.getInstance(document.getElementById('editProfileModal')).hide();
+                          document.getElementById('error-alert').classList.add('d-none');
+                          document.querySelector('input[name=\'image\']').value = '';
+                      }">
+                      
                     <div class="mb-3">
                         <label class="form-label fw-bold">اسم المستخدم الجديد</label>
                         <input type="text" name="username" class="form-control" value="{{ user.username }}" required>
@@ -58,55 +101,12 @@
     </div>
 </div>
 
-<!-- ⚡ كود الـ JavaScript (Fetch API) للتحديث الفوري اللحظي بدون ريفريش -->
 <script>
-document.getElementById('edit-profile-form').addEventListener('submit', async function(e) {
-    e.preventDefault(); // منع استمارة الـ HTML من عمل إعادة تحميل تقليدية للصفحة
-    
-    const formData = new FormData(this);
-    const errorAlert = document.getElementById('error-alert');
-    errorAlert.classList.add('d-none'); // تصفير التنبيهات السابقة وإخفاؤها
-    
-    try {
-        // إرسال البيانات بشكل مخفي غير متزامن إلى السيرفر عبر رابط الـ API
-        const response = await fetch('/api/users/{{ user.id }}/update-json', {
-            method: 'PUT',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            // ✨ السحر هنا: نقوم بتحديث عناصر الصفحة فوراً بالبيانات الجديدة المستلمة
-            document.getElementById('profile-display-username').innerText = data.username;
-            document.getElementById('profile-display-email').innerText = data.email;
-            
-            // تحديث كود عناصر الـ Inputs داخل الـ Modal لتبقى متزامنة
-            document.querySelector('input[name="username"]').value = data.username;
-            document.querySelector('input[name="email"]').value = data.email;
-            
-            // إذا قام المستخدم برفع صورة جديدة، نقوم بتحديث مسار العرض في نفس اللحظة
-            if (data.image_file) {
-//  السطر الصحيح والمعدل:
-                document.getElementById('profile-display-img').src = `/media/profile_pics/${data.image_file}`;
-            }
-            
-            // إغلاق النافذة المنبثقة تلقائياً بعد نجاح العملية
-            const modalElement = document.getElementById('editProfileModal');
-            const modal = bootstrap.Modal.getInstance(modalElement);
-            modal.hide();
-            
-            // تنظيف حقل اختيار الصورة
-            document.querySelector('input[name="image"]').value = '';
-        } else {
-            // عرض رسالة الخطأ القادمة من FastAPI في حال كان الاسم مأخوذاً من قبل
-            errorAlert.innerText = data.detail || 'حدث خطأ أثناء تحديث البيانات.';
-            errorAlert.classList.remove('d-none');
-        }
-    } catch (err) {
-        errorAlert.innerText = 'فشل الاتصال بالسيرفر، يرجى التحقق من الشبكة.';
+    // إلغاء كود الخطأ البرمجي 500 وعرضه بالتنبيه
+    document.body.addEventListener('htmx:responseError', function(evt) {
+        const errorAlert = document.getElementById('error-alert');
+        errorAlert.innerText = evt.detail.xhr.responseText || 'حدث خطأ غير متوقع';
         errorAlert.classList.remove('d-none');
-    }
-});
+    });
 </script>
 {% endblock content %}

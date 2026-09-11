@@ -2,7 +2,11 @@
 {% block content %}
 <div class="content-section py-4 px-4 mb-4">
     <!-- تعبئة عنوان الفورم ديناميكياً (Update Post أو New Post) -->
-    <form method="POST" action="">
+    <!-- ⚡ سحر الـ HTMX: استخدام المسار النصي المباشر لحل مشاكل التوجيه وضمان إرسال طلب PUT لتجنب خطأ 405 -->
+    <form hx-put="{{ '/posts/' ~ post.id ~ '/update' if post else '/api/posts' }}" 
+          hx-target="#main-content-area" 
+          hx-swap="innerHTML">
+          
         <fieldset class="form-group">
             <legend class="border-bottom mb-4 text-body pb-2 fw-bold">{{ legend if legend else "New Post" }}</legend>
             
@@ -26,12 +30,20 @@
                           rows="8" 
                           required>{{ post.content if post else '' }}</textarea>
             </div>
+            
+            <!-- حقل مخفي لرقم المستخدم (مطلوب عند إنشاء منشور جديد فقط) -->
+            {% if not post %}
+                <input type="hidden" name="user_id" value="1">
+            {% endif %}
         </fieldset>
         
-        <!-- زر الحفظ والإرسال -->
+        <!-- أزرار الحفظ والإلغاء المحدثة بالمسارات المباشرة المتوافقة مع HTMX للتنقل اللحظي -->
         <div class="pt-2">
-            <button type="submit" class="btn btn-primary">Save Post</button>
-            <a href="{{ url_for('post_page', post_id=post.id) if post else '/' }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+            <button type="submit" class="btn btn-primary fw-bold">Save Post</button>
+            <a href="{{ '/posts/' ~ post.id if post else '/' }}" 
+               hx-get="{{ '/posts/' ~ post.id if post else '/' }}"
+               hx-target="#main-content-area"
+               class="btn btn-outline-secondary ms-2">Cancel</a>
         </div>
     </form>
 </div>
