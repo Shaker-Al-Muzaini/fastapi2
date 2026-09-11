@@ -1,0 +1,112 @@
+{% extends "layout.html" %} 
+
+{% block content %}
+<div class="content-section py-4 px-4 mb-4" style="direction: rtl; text-align: right;">
+    <div class="d-flex align-items-center gap-4 border-bottom pb-4 flex-row-reverse justify-content-end">
+        <!-- 🖼️ صورة الملف الشخصي (تتحدث تلقائياً بالـ JavaScript) -->
+        <img id="profile-display-img" class="rounded-circle account-img border" 
+             src="{{ user.image_path }}" 
+             alt="{{ user.username }}'s profile" 
+             width="125" height="125"
+             style="object-fit: cover;">
+        
+        <div>
+            <!-- 👤 البيانات الشخصية المعروضة حالياً -->
+            <h2 id="profile-display-username" class="account-heading fw-bold mb-1">{{ user.username }}</h2>
+            <p id="profile-display-email" class="text-secondary mb-3">{{ user.email }}</p>
+            
+            <!-- 🔘 زر فتح نافذة التعديل المنبثقة -->
+            <button type="button" class="btn btn-outline-info btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#editProfileModal">
+                تعديل بيانات الحساب
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 📦 النافذة المنبثقة للتعديل (Bootstrap Modal) -->
+<div class="modal fade" id="editProfileModal" tabindex="-1" aria-labelledby="editProfileModalLabel" aria-hidden="true" style="direction: rtl;">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header flex-row-reverse justify-content-between">
+                <h5 class="modal-title fw-bold" id="editProfileModalLabel">تعديل بيانات الحساب</h5>
+                <button type="button" class="btn-close m-0" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-start" style="text-align: right !important;">
+                <!-- 🚨 تنبيه مخصص لعرض الأخطاء القادمة من السيرفر (مثل تكرار الاسم) -->
+                <div id="error-alert" class="alert alert-danger d-none" role="alert"></div>
+
+                <form id="edit-profile-form" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">اسم المستخدم الجديد</label>
+                        <input type="text" name="username" class="form-control" value="{{ user.username }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">البريد الإلكتروني الجديد</label>
+                        <input type="email" name="email" class="form-control" value="{{ user.email }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">تحديث الصورة الشخصية</label>
+                        <input type="file" name="image" class="form-control" accept="image/*">
+                    </div>
+                    <div class="modal-footer px-0 pb-0 pt-3 flex-row-reverse justify-content-start gap-2">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                        <button type="submit" class="btn btn-info text-white fw-bold">حفظ التغييرات</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ⚡ كود الـ JavaScript (Fetch API) للتحديث الفوري اللحظي بدون ريفريش -->
+<script>
+document.getElementById('edit-profile-form').addEventListener('submit', async function(e) {
+    e.preventDefault(); // منع استمارة الـ HTML من عمل إعادة تحميل تقليدية للصفحة
+    
+    const formData = new FormData(this);
+    const errorAlert = document.getElementById('error-alert');
+    errorAlert.classList.add('d-none'); // تصفير التنبيهات السابقة وإخفاؤها
+    
+    try {
+        // إرسال البيانات بشكل مخفي غير متزامن إلى السيرفر عبر رابط الـ API
+        const response = await fetch('/api/users/{{ user.id }}/update-json', {
+            method: 'PUT',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // ✨ السحر هنا: نقوم بتحديث عناصر الصفحة فوراً بالبيانات الجديدة المستلمة
+            document.getElementById('profile-display-username').innerText = data.username;
+            document.getElementById('profile-display-email').innerText = data.email;
+            
+            // تحديث كود عناصر الـ Inputs داخل الـ Modal لتبقى متزامنة
+            document.querySelector('input[name="username"]').value = data.username;
+            document.querySelector('input[name="email"]').value = data.email;
+            
+            // إذا قام المستخدم برفع صورة جديدة، نقوم بتحديث مسار العرض في نفس اللحظة
+            if (data.image_file) {
+//  السطر الصحيح والمعدل:
+                document.getElementById('profile-display-img').src = `/media/profile_pics/${data.image_file}`;
+            }
+            
+            // إغلاق النافذة المنبثقة تلقائياً بعد نجاح العملية
+            const modalElement = document.getElementById('editProfileModal');
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            modal.hide();
+            
+            // تنظيف حقل اختيار الصورة
+            document.querySelector('input[name="image"]').value = '';
+        } else {
+            // عرض رسالة الخطأ القادمة من FastAPI في حال كان الاسم مأخوذاً من قبل
+            errorAlert.innerText = data.detail || 'حدث خطأ أثناء تحديث البيانات.';
+            errorAlert.classList.remove('d-none');
+        }
+    } catch (err) {
+        errorAlert.innerText = 'فشل الاتصال بالسيرفر، يرجى التحقق من الشبكة.';
+        errorAlert.classList.remove('d-none');
+    }
+});
+</script>
+{% endblock content %}

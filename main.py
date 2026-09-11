@@ -9,13 +9,12 @@ from sqlalchemy.orm import selectinload
 import schemas.model
 from schemas.database import Base, get_db, engine
 
-# 1. استيراد الراوترات الفرعية من مجلد routers
-from routers.users import router as user_router
-from routers.posts import router as post_router
+# الاستيراد الموحد المختصر بفضل ملف __init__.py
+from routers import user_router, post_router
 
 app = FastAPI(title="My Professional Blog")
 
-# إنشاء الجداول تلقائياً في قاعدة البيانات بشكل غير متزامن عند تشغيل التطبيق
+# إنشاء الجداول تلقائياً في قاعدة البيانات عند بدء التشغيل
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
@@ -26,22 +25,22 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/media", StaticFiles(directory="media"), name="media")
 templates = Jinja2Templates(directory="templates")
 
-
 # ===========================================================================
-# 🔌 تضمين الراوترات الفرعية وتشكيل مساراتها مركزياً (مثل Laravel)
+# 🔌 تضمين الراوترات الفرعية (المصحح لمنع أخطاء الـ 404)
 # ===========================================================================
 
-# تشكيل مسار مستخدمي الـ API ليصبح: /api/users
+# 1. تضمين واجهات الـ API لتبدأ بـ: /api/users
 app.include_router(user_router, prefix="/api/users", tags=["API Users"])
 
-# تشكيل مسار منشورات الـ API لتبدأ بـ: /api/posts وعمليات التعديل والحذف لتبدأ بـ: /posts
-app.include_router(post_router, prefix="/api/posts", tags=["API Posts"])
-# لتضمين مسارات التعديل والحذف التي تبدأ بـ /posts بدون كلمة api، نضمن الراوتر مرة أخرى ببادئة مختلفة
-app.include_router(post_router, prefix="/posts")
+# 2. تضمين صفحة بروفايل المستخدم لتبدأ بـ: /users/{user_id}/profile مباشرة وبدون تضارب
+app.include_router(user_router, prefix="/users", tags=["Users"])
 
+# 3. تضمين مسارات المنشورات للـ API والصفحات العادية
+app.include_router(post_router, prefix="/api/posts", tags=["API Posts"])
+app.include_router(post_router, prefix="/posts") 
 
 # ===========================================================================
-# 🌐 صفحات الـ HTML الأساسية (محتفظ بها في الـ main بناءً على طلبك)
+# 🌐 صفحات الـ HTML الأساسية (Main View Routes)
 # ===========================================================================
 
 # 1. الصفحة الرئيسية
@@ -53,9 +52,7 @@ async def home(request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     )
     posts = result.scalars().all()
     return templates.TemplateResponse(
-        request,
-        "home.html",
-        {"posts": posts, "title": "Home"},
+        request, "home.html", {"posts": posts, "title": "Home"}
     )
 
 # 2. صفحة منشورات مستخدم معين
@@ -73,9 +70,7 @@ async def user_posts_page(request: Request, user_id: int, db: Annotated[AsyncSes
     )
     posts = result.scalars().all()
     return templates.TemplateResponse(
-        request,
-        "user_posts.html",
-        {"posts": posts, "user": user, "title": f"{user.username}'s Posts"},
+        request, "user_posts.html", {"posts": posts, "user": user, "title": f"{user.username}'s Posts"}
     )
 
 # 3. صفحة تفاصيل منشور فردي
@@ -92,7 +87,5 @@ async def get_post_page(request: Request, post_id: int, db: Annotated[AsyncSessi
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
         
     return templates.TemplateResponse(
-        request,
-        "index.html", 
-        {"post": post, "title": post.title}
+        request, "index.html", {"post": post, "title": post.title}
     )

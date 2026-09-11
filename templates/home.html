@@ -3,14 +3,17 @@
     {% for post in posts %} 
         <article class="content-section py-3 px-4 mb-4"> 
             <div class="d-flex align-items-start gap-4"> 
-                <!-- صورة كاتب المقال -->
-                <img class="rounded-circle article-img flex-shrink-0" 
-                     src="{{ post.author.image_path }}" 
-                     alt="{{ post.author.username }}'s profile picture" 
-                     width="64" 
-                     height="64" 
-                     loading="lazy"> 
-                
+            <a class="me-2 fw-bold text-decoration-none" href="{{ url_for('user_profile', user_id=post.author.id) }}">
+                    <img class="rounded-circle article-img flex-shrink-0" 
+                         src="{{ post.author.image_path }}" 
+                         alt="{{ post.author.username }}'s profile picture" 
+                         width="64" 
+                         height="64" 
+                         loading="lazy"
+                         style="object-fit: cover;"> 
+                </a>    
+
+
                 <div class="flex-grow-1"> 
                     <!-- معلومات كاتب المقال والتاريخ -->
                     <div class="article-metadata mb-2"> 
