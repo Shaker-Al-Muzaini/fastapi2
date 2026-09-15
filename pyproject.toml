@@ -20,6 +20,7 @@ dependencies = [
     "openai-whisper>=20250625",
     "psycopg>=3.3.5",
     "pydantic>=2.13.5",
+    "python-dotenv>=1.2.3",
     "sentencepiece>=0.2.2",
     "speechrecognition>=3.17.0",
     "sqlalchemy>=2.0.52",

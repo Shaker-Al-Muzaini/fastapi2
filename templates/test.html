@@ -1,11 +1,219 @@
-{% extends "layout.html" %} 
+{% extends "layout.html" %}
 
 {% block content %}
+<style>
+  /* ============================================================
+     استوديو الدبلجة الاحترافي - متوافق مع الاتجاهين LTR و RTL
+     ============================================================ */
+  .studio-breakout {
+    width: 100%;
+    max-width: 100%;
+    margin: 30px auto;
+    padding: 0;
+    box-sizing: border-box;
+    direction: rtl;
+    text-align: right;
+  }
+  .studio-card {
+    width: 100%;
+    margin: 0 auto;
+    background: #ffffff;
+    color: #333;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0,0,0,.08);
+    border: 1px solid #eee;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+
+  .studio-card *{box-sizing:border-box;}
+  .studio-mono{font-family:'Consolas','JetBrains Mono',monospace;}
+
+  .studio-head{
+    padding:18px 22px;
+    border-bottom:2px solid #f0f0f0;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:10px;
+    background:#fbf7f1;
+  }
+  .studio-head h3{margin:0;font-size:18px;color:#e8830d;}
+  .studio-head p{margin:2px 0 0;font-size:13px;color:#777;}
+  .studio-head-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+  .studio-btn{
+    border:2px solid #e0e0e0;
+    background:#ffffff;
+    color:#333;
+    border-radius:8px;
+    padding:9px 16px;
+    font-size:13px;
+    font-weight:bold;
+    cursor:pointer;
+    transition:background .3s, border-color .3s;
+  }
+  .studio-btn:hover{background:#f5f5f5;}
+  .studio-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .studio-btn.gold{background:#fd7e14;border-color:#e8690a;color:#fff;}
+  .studio-btn.gold:hover{background:#e8690a;}
+  .studio-btn.blue{background:#007bff;border-color:#007bff;color:#fff;}
+  .studio-btn.blue:hover{background:#0069d9;}
+  .studio-btn.danger{background:transparent;border-color:#dc3545;color:#dc3545;}
+  .studio-btn.danger:hover{background:#fdeaec;}
+
+  .studio-controls-row{
+    padding:14px 22px;
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:center;
+    border-bottom:1px solid #f0f0f0;
+    background:#fafafa;
+  }
+  .studio-controls-row select{
+    padding:9px 10px;
+    border-radius:8px;
+    border:2px solid #e0e0e0;
+    background:#fff;
+    color:#333;
+    font-size:13px;
+  }
+  .studio-hint{font-size:12px;color:#888;}
+  .studio-badge{
+    font-size:11.5px;padding:4px 10px;border-radius:20px;font-weight:bold;
+    background:#e7f5ea;color:#1e7e34;border:1px solid #c3e6cb;
+  }
+  .studio-badge.warn{background:#fff4e5;color:#96590f;border-color:#ffe0b2;}
+
+  .studio-stage{
+    display:flex;
+    gap:16px;
+    padding:16px 22px;
+    align-items:flex-start;
+    flex-wrap:wrap;
+    border-bottom:1px solid #f0f0f0;
+    background:#fff;
+  }
+  .studio-video-wrap{
+    width:220px;
+    flex-shrink:0;
+    background:#000;
+    border-radius:8px;
+    overflow:hidden;
+    aspect-ratio:16/9;
+    box-shadow:0 2px 8px rgba(0,0,0,.15);
+  }
+  .studio-video-wrap video{width:100%;height:100%;object-fit:contain;background:#000;}
+  .studio-transport{flex:1;min-width:220px;display:flex;flex-direction:column;gap:10px;}
+  .studio-transport-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .studio-time{
+    padding:7px 10px;background:#f5f5f5;border:1px solid #e0e0e0;border-radius:8px;
+    direction:ltr;font-size:13px;color:#333;
+  }
+  .studio-zoom{display:flex;align-items:center;gap:8px;color:#777;font-size:12px;}
+
+  .studio-timeline-outer{
+    overflow-x:auto;
+    overflow-y:hidden;
+    position:relative;
+    background:#161a1f;
+    max-width:100%;
+  }
+  .studio-timeline-inner{position:relative;direction:ltr;}
+  .studio-ruler{
+    position:relative;height:24px;background:#1e232a;border-bottom:1px solid #2c333c;
+  }
+  .studio-tick{position:absolute;top:0;bottom:0;border-left:1px solid #2c333c;}
+  .studio-tick span{position:absolute;top:4px;right:4px;font-size:10px;color:#9aa4b2;direction:ltr;}
+  .studio-track-area{position:relative;height:170px;}
+  #studioWaveform{position:absolute;top:0;left:0;width:100%;height:100px;display:block;max-width:none;}
+  .studio-segments-layer{position:absolute;top:100px;left:0;height:60px;width:100%;}
+  .studio-segment{
+    position:absolute;top:6px;height:48px;
+    background:rgba(253,126,20,.35);
+    border:1.5px solid #fd7e14;
+    border-radius:6px;cursor:grab;overflow:hidden;user-select:none;
+  }
+  .studio-segment:hover{background:rgba(253,126,20,.5);}
+  .studio-segment.selected{
+    border-color:#ffb066;background:rgba(255,176,102,.55);box-shadow:0 0 0 1px #ffb066;
+  }
+  .studio-segment.ready{border-color:#28a745;}
+  .studio-segment.overlap{box-shadow:0 0 0 2px #dc3545;}
+  .studio-segment .lbl{
+    padding:4px 6px;font-size:10.5px;line-height:1.3;color:#3a2306;font-weight:bold;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;
+  }
+  .studio-segment .idx{
+    position:absolute;bottom:2px;left:5px;font-family:'Consolas',monospace;
+    font-size:9px;color:#5a3a10;direction:ltr;
+  }
+  .studio-segment .h{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;background:rgba(0,0,0,.2);}
+  .studio-segment .h.l{left:0;} .studio-segment .h.r{right:0;}
+
+  /* مؤشر الوقت: الخط نفسه شفاف للأحداث حتى لا يحجب سحب المقاطع،
+     والمقبض المثلث وحده هو القابل للنقر */
+  .studio-playhead{
+    position:absolute;top:0;bottom:0;width:3px;background:#ff4d4d;
+    z-index:20;pointer-events:none;
+  }
+  .studio-playhead::before{
+    content:'';position:absolute;top:0;left:-6px;width:15px;height:14px;
+    background:#ff4d4d;clip-path:polygon(0 0, 100% 0, 50% 100%);
+    cursor:grab;pointer-events:auto;
+  }
+  .studio-playhead:active::before{cursor:grabbing;background:#ff1a1a;}
+
+  .studio-strip{
+    padding:12px 22px;display:flex;gap:8px;overflow-x:auto;
+    border-bottom:1px solid #f0f0f0;background:#fafafa;
+  }
+  .studio-chip{
+    flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid #e0e0e0;
+    background:#fff;font-size:11.5px;color:#777;cursor:pointer;
+    display:flex;align-items:center;gap:6px;
+  }
+  .studio-chip .t{font-family:'Consolas',monospace;direction:ltr;font-size:10px;}
+  .studio-chip.active{border-color:#fd7e14;color:#333;background:rgba(253,126,20,.1);}
+  .studio-chip .dot{width:6px;height:6px;border-radius:50%;background:#bbb;}
+  .studio-chip .dot.ready{background:#28a745;}
+
+  .studio-panel{padding:18px 22px;background:#fff;}
+  .studio-panel-empty{color:#888;font-size:13px;text-align:center;padding:20px;}
+  .studio-panel-grid{display:grid;grid-template-columns:1fr;gap:16px;}
+  @media (min-width:900px){
+    .studio-panel-grid{grid-template-columns:1fr 1fr 1fr;}
+  }
+  .studio-field label{display:block;font-size:12px;color:#666;font-weight:bold;margin-bottom:5px;}
+  .studio-field textarea{
+    width:100%;min-height:60px;resize:vertical;background:#fafafa;border:2px solid #e0e0e0;
+    color:#333;border-radius:8px;padding:8px;font-size:13px;line-height:1.6;font-family:inherit;
+  }
+  .studio-slider-row{display:flex;align-items:center;gap:8px;}
+  .studio-slider-row input[type=range]{flex:1;accent-color:#fd7e14;}
+  .studio-slider-row .val{font-family:'Consolas',monospace;font-size:11.5px;width:48px;direction:ltr;color:#555;}
+  .studio-panel-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .studio-original{color:#888;font-size:12px;background:transparent;border:1px dashed #ddd;border-radius:6px;padding:8px;line-height:1.6;margin-top:8px;}
+
+  .studio-empty-msg{padding:40px 20px;text-align:center;color:#888;font-size:13px;line-height:1.9;}
+  .studio-empty-msg.error{color:#b02a37;}
+
+  .studio-export-progress{padding:0 22px 16px;}
+  .studio-export-progress .bar-wrap{background:#eee;border-radius:8px;overflow:hidden;height:22px;}
+  .studio-export-progress .bar{height:100%;width:0%;background:#007bff;color:#fff;font-size:12px;line-height:22px;text-align:center;transition:width .3s;}
+  .studio-export-progress p{margin-top:8px;color:#666;font-size:13px;text-align:center;}
+  .studio-export-result{padding:0 22px 22px;}
+  .studio-export-result .box{background:#d4edda;border-right:5px solid #28a745;border-radius:8px;padding:16px;text-align:center;}
+  .studio-export-result .box p{color:#155724;font-weight:bold;margin:0 0 12px;font-size:15px;}
+  .studio-export-result .box a{text-decoration:none;display:inline-block;box-shadow:0 4px 10px rgba(253,126,20,.3);}
+</style>
+
 <div style="max-width: 700px; margin: 40px auto; padding: 25px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; text-align: right; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
     <h1 style="text-align: center; color: #ff0000; font-size: 28px; margin-bottom: 5px;">🎥 محمل فيديوهات يوتيوب الاحترافي</h1>
     <p style="text-align: center; color: #666; margin-bottom: 30px;">قم بلصق رابط الفيديو، اختر الجودة، وابدأ التحميل مباشرة</p>
 
-    <!-- خطوة 1: إدخال الرابط -->
     <div id="url-section" style="margin-bottom: 20px;">
         <label for="video-url" style="font-weight: bold; display: block; margin-bottom: 8px; color: #333;">رابط فيديو يوتيوب:</label>
         <div style="display: flex; gap: 10px;">
@@ -14,7 +222,6 @@
         </div>
     </div>
 
-    <!-- خطوة 2: لوحة عرض تفاصيل الفيديو والخيارات (مخفية افتراضياً) -->
     <div id="video-details" style="display: none; margin-top: 25px; padding-top: 20px; border-top: 2px solid #f0f0f0;">
         <div style="display: flex; gap: 15px; margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 8px; flex-wrap: wrap;">
             <img id="video-thumb" src="" alt="Thumbnail" style="width: 180px; height: auto; border-radius: 6px; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
@@ -31,30 +238,26 @@
 
         <button id="download-btn" style="width: 100%; padding: 14px; background-color: #007bff; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: background 0.3s;">بدء التحميل والتحضير والتنزيل 🚀</button>
 
-        <!-- شريط تقدم التحميل -->
         <div id="download-progress-wrap" style="display: none; margin-top: 12px; background: #eee; border-radius: 8px; overflow: hidden; height: 22px;">
             <div id="download-progress-bar" style="height: 100%; width: 0%; background: #007bff; color: white; font-size: 12px; line-height: 22px; text-align: center; transition: width 0.3s;">0%</div>
         </div>
         <p id="download-progress-message" style="display: none; margin-top: 8px; color: #555; font-size: 14px; text-align: center;"></p>
     </div>
 
-    <!-- خطوة 3: إشعار اكتمال التحميل ورابط التنزيل للمتصفح وأدوات النصوص -->
     <div id="success-section" style="display: none; margin-top: 25px; padding: 20px; background-color: #d4edda; border-right: 5px solid #28a745; border-radius: 8px;">
         <h4 style="color: #155724; margin: 0 0 10px 0; font-size: 18px; text-align: center;">✨ جاهز للتحميل النهائي!</h4>
         <p style="color: #155724; margin-bottom: 15px; text-align: center;">تم معالجة الفيديو بنجاح على الخادم الخاص بك.</p>
-        
+
         <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px;">
             <a id="final-download-link" href="" download style="padding: 12px 25px; background-color: #28a745; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; box-shadow: 0 4px 10px rgba(40,167,69,0.3);">تنزيل ملف الفيديو 💾</a>
             <button id="transcribe-btn" style="padding: 12px 25px; background-color: #6f42c1; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(111,66,193,0.3);">تفريغ نص الفيديو الصوتي 📝</button>
         </div>
 
-        <!-- شريط تقدم تفريغ النص -->
         <div id="transcribe-progress-wrap" style="display: none; margin-bottom: 15px; background: #eee; border-radius: 8px; overflow: hidden; height: 22px;">
             <div id="transcribe-progress-bar" style="height: 100%; width: 0%; background: #6f42c1; color: white; font-size: 12px; line-height: 22px; text-align: center; transition: width 0.3s;">0%</div>
         </div>
         <p id="transcribe-progress-message" style="display: none; margin-bottom: 15px; color: #555; font-size: 14px; text-align: center;"></p>
 
-        <!-- صندوق عرض تفريغ الكلمات -->
         <div id="transcribe-container" style="display: none; background: white; padding: 15px; border-radius: 6px; border: 1px solid #c3e6cb; margin-top: 15px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <label style="font-weight: bold; color: #6f42c1;">النص الصوتي المستخرج (<span id="detected-language-label">-</span>):</label>
@@ -62,57 +265,87 @@
             </div>
             <div id="transcribe-output" style="font-size: 15px; color: #333; line-height: 1.6; white-space: pre-wrap; direction: auto; text-align: right; background: #fafafa; padding: 10px; border-radius: 4px; max-height: 250px; overflow-y: auto;"></div>
 
-            <!-- صندوق عرض النص المترجم (يظهر فقط بعد الضغط على زر الترجمة) -->
             <div id="translate-container" style="display: none; margin-top: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px;">
                     <label style="font-weight: bold; color: #17a2b8; margin: 0;">النص مترجمًا للعربية:</label>
                     <button id="refresh-translate-btn" style="padding: 6px 12px; background-color: #28a745; color: white; border: none; border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;">تحديث الترجمة 🔄</button>
                 </div>
                 <textarea id="translate-output" rows="8" style="width: 100%; resize: vertical; font-size: 15px; color: #333; line-height: 1.6; direction: rtl; text-align: right; background: #f0fbfc; padding: 10px; border-radius: 4px; max-height: 250px; overflow-y: auto; border: 1px solid #bee5eb; box-sizing: border-box; font-family: inherit;"></textarea>
-
-                <!-- ============================================================ -->
-                <!-- قسم جديد: تحويل النص العربي إلى صوت احترافي (رجل/امرأة)      -->
-                <!-- يستخدم أصوات Microsoft Edge Neural المجانية عالية الجودة     -->
-                <!-- ============================================================ -->
-                <div id="tts-section" style="margin-top: 15px; padding: 15px; background: #fff8e6; border: 1px solid #f0d78c; border-radius: 6px;">
-                    <label style="font-weight: bold; display: block; margin-bottom: 10px; color: #8a6d1f;">🎙️ تحويل النص العربي إلى صوت احترافي:</label>
-
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
-                        <select id="tts-dialect" style="flex: 1; min-width: 140px; padding: 10px; border-radius: 6px; border: 1px solid #e0c060; background: white;"></select>
-
-                        <select id="tts-gender" style="flex: 1; min-width: 120px; padding: 10px; border-radius: 6px; border: 1px solid #e0c060; background: white;">
-                            <option value="female">صوت أنثى 👩</option>
-                            <option value="male">صوت رجل 👨</option>
-                        </select>
-
-                        <button id="tts-btn" style="padding: 10px 20px; background-color: #d4a017; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">تحويل إلى صوت 🔊</button>
-                    </div>
-
-                    <!-- شريط تقدم توليد الصوت -->
-                    <div id="tts-progress-wrap" style="display: none; margin-bottom: 10px; background: #f0e0b0; border-radius: 8px; overflow: hidden; height: 20px;">
-                        <div id="tts-progress-bar" style="height: 100%; width: 0%; background: #d4a017; color: white; font-size: 11px; line-height: 20px; text-align: center; transition: width 0.3s;">0%</div>
-                    </div>
-                    <p id="tts-progress-message" style="display: none; margin-bottom: 10px; color: #8a6d1f; font-size: 13px; text-align: center;"></p>
-
-                    <!-- مشغل الصوت الناتج -->
-                    <audio id="tts-audio-player" controls style="display: none; width: 100%; margin-top: 8px;"></audio>
-                    <a id="tts-download-link" href="" download style="display: none; margin-top: 8px; text-decoration: none; color: #8a6d1f; font-weight: bold; font-size: 14px;">⬇️ تنزيل ملف الصوت (MP3)</a>
-
-                    <div style="margin-top: 12px;">
-                        <button id="dub-btn" style="padding: 10px 18px; background-color: #0d6efd; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">دمج الصوت على الفيديو الأصلي 🎬</button>
-                    </div>
-
-                    <div id="dub-result-wrap" style="display: none; margin-top: 15px; padding: 12px; background: #eef6ff; border: 1px solid #bbd8ff; border-radius: 6px;">
-                        <div id="dub-success-message" style="display: none; margin-bottom: 10px; padding: 10px 12px; background: #d4edda; border: 1px solid #b8dfc7; border-radius: 6px; color: #155724; font-weight: bold; text-align: center;">✅ تم إنشاء الفيديو المدمج بنجاح، وهو جاهز للمشاهدة والتنزيل.</div>
-                        <div id="dub-error-message" style="display: none; margin-bottom: 10px; padding: 10px 12px; background: #f8d7da; border: 1px solid #f5c2c7; border-radius: 6px; color: #842029; font-weight: bold; text-align: center;">❌ فشل دمج الفيديو. الرجاء التحقق من الملف الصوتي أو الفيديو الأصلي والمحاولة مرة أخرى.</div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 8px; color: #0b4ea1;">🎬 معاينة الفيديو المدمج النهائي:</label>
-                        <video id="dub-video-player" controls style="display: none; width: 100%; border-radius: 6px; background: #000;"></video>
-                        <a id="dub-download-link" href="" download style="display: none; margin-top: 8px; text-decoration: none; color: #0b4ea1; font-weight: bold; font-size: 14px;">⬇️ تنزيل الفيديو المدمج</a>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- استوديو الدبلجة الاحترافي                                     -->
+<!-- ============================================================ -->
+<div id="studio-breakout" class="studio-breakout" style="display:none;">
+  <div class="studio-card">
+    <div class="studio-head">
+      <div>
+        <h3>🎬 استوديو الدبلجة الاحترافي</h3>
+        <p>قسّم الجمل، اسحب لضبط التوقيت، وولّد صوت كل جملة على حدة قبل الدمج النهائي</p>
+      </div>
+      <div class="studio-head-actions">
+        <button id="studio-add-seg" class="studio-btn">➕ مقطع يدوي</button>
+        <button id="studio-auto-fit" class="studio-btn">⚡ مزامنة ومد التوقيت</button>
+        <button id="studio-gen-all" class="studio-btn gold">🔊 توليد كل الأصوات</button>
+        <button id="studio-export" class="studio-btn blue">تصدير للدمج النهائي 🚀</button>
+      </div>
+    </div>
+
+    <div class="studio-controls-row">
+      <select id="studio-dialect"></select>
+      <select id="studio-gender">
+        <option value="female">صوت أنثى 👩</option>
+        <option value="male">صوت رجل 👨</option>
+      </select>
+      <span id="studio-source-badge" class="studio-badge">—</span>
+      <span class="studio-hint">اللهجة والجنس يُطبّقان عند توليد أي مقطع جديد.</span>
+    </div>
+
+    <div class="studio-stage">
+      <div class="studio-video-wrap"><video id="studio-video" controls preload="metadata"></video></div>
+      <div class="studio-transport">
+        <div class="studio-transport-row">
+          <button id="studio-playpause" class="studio-btn">▶️ تشغيل</button>
+          <div class="studio-time studio-mono" id="studio-time">00:00.000 / 00:00.000</div>
+          <div class="studio-zoom">🔍 التكبير <input type="range" id="studio-zoom" min="20" max="400" value="90"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="studio-empty" class="studio-empty-msg">جاري تجهيز موجة الصوت وتقسيم الجمل تلقائياً...</div>
+
+    <div class="studio-timeline-outer" id="studio-timeline-outer" style="display:none;">
+      <div class="studio-timeline-inner" id="studio-timeline-inner">
+        <div class="studio-ruler" id="studio-ruler"></div>
+        <div class="studio-track-area" id="studio-track-area">
+          <canvas id="studioWaveform"></canvas>
+          <div class="studio-segments-layer" id="studio-segments-layer"></div>
+          <div class="studio-playhead" id="studio-playhead"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="studio-strip" id="studio-strip" style="display:none;"></div>
+
+    <div class="studio-panel" id="studio-panel">
+      <div class="studio-panel-empty">اختر مقطعاً من الخط الزمني أعلاه لتحرير نصه وتوقيته وصوته.</div>
+    </div>
+
+    <div class="studio-export-progress" id="studio-export-progress" style="display:none;">
+      <div class="bar-wrap"><div class="bar" id="studio-export-bar">0%</div></div>
+      <p id="studio-export-message"></p>
+    </div>
+
+    <div class="studio-export-result" id="studio-export-result" style="display:none;">
+      <div class="box">
+        <p>✅ اكتمل الدمج النهائي بنجاح!</p>
+        <a id="studio-final-link" href="" download class="studio-btn gold">تنزيل الفيديو المدبلج النهائي 💾</a>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -138,82 +371,31 @@
     const transcribeProgressBar = document.getElementById('transcribe-progress-bar');
     const transcribeProgressMessage = document.getElementById('transcribe-progress-message');
 
-    // ---- عناصر قسم تحويل النص إلى صوت ----
-    const ttsSection = document.getElementById('tts-section');
-    const ttsDialectSelect = document.getElementById('tts-dialect');
-    const ttsGenderSelect = document.getElementById('tts-gender');
-    const ttsBtn = document.getElementById('tts-btn');
-    const ttsProgressWrap = document.getElementById('tts-progress-wrap');
-    const ttsProgressBar = document.getElementById('tts-progress-bar');
-    const ttsProgressMessage = document.getElementById('tts-progress-message');
-    const ttsAudioPlayer = document.getElementById('tts-audio-player');
-    const ttsDownloadLink = document.getElementById('tts-download-link');
-    const dubBtn = document.getElementById('dub-btn');
-    const dubVideoPlayer = document.getElementById('dub-video-player');
-    const dubDownloadLink = document.getElementById('dub-download-link');
-    const dubResultWrap = document.getElementById('dub-result-wrap');
-    const dubSuccessMessage = document.getElementById('dub-success-message');
-    const dubErrorMessage = document.getElementById('dub-error-message');
-
     let currentUrl = "";
 
-    // ============================================================
-    // دالة عامة لاستطلاع (Polling) حالة أي Job حتى تكتمل أو تفشل
-    // ============================================================
+    // نتيجة آخر تفريغ: المقاطع الزمنية الحقيقية من Whisper + قمم الموجة من السيرفر
+    let transcriptionData = { segments: [], peaks: [], language: 'en', audioDuration: 0 };
+
+    function resetStudioUI() {
+        document.getElementById('studio-breakout').style.display = 'none';
+    }
+
     async function pollJob(jobId, statusUrlBase, { onProgress } = {}) {
         while (true) {
             const res = await fetch(`${statusUrlBase}/${jobId}`);
-
-            if (!res.ok) {
-                throw new Error('تعذر الحصول على حالة المهمة من السيرفر.');
-            }
-
+            if (!res.ok) throw new Error('تعذر الحصول على حالة المهمة من السيرفر.');
             const job = await res.json();
-
             if (onProgress) onProgress(job);
-
-            if (job.status === 'completed') {
-                return job.result;
-            }
-
-            if (job.status === 'failed') {
-                throw new Error(job.error || job.message || 'فشلت المهمة على السيرفر.');
-            }
-
-            if (job.status === 'cancelled') {
-                throw new Error('تم إلغاء المهمة.');
-            }
-
+            if (job.status === 'completed') return job.result;
+            if (job.status === 'failed') throw new Error(job.error || job.message || 'فشلت المهمة على السيرفر.');
+            if (job.status === 'cancelled') throw new Error('تم إلغاء المهمة.');
             await new Promise((resolve) => setTimeout(resolve, 1200));
         }
     }
 
-    // ============================================================
-    // تحميل قائمة اللهجات العربية المتاحة لملء القائمة المنسدلة
-    // ============================================================
-    async function loadTtsDialects() {
-        try {
-            const res = await fetch('/api/tts/voices');
-            if (!res.ok) return;
-            const data = await res.json();
-
-            ttsDialectSelect.innerHTML = "";
-            data.dialects.forEach((d) => {
-                const option = document.createElement('option');
-                option.value = d.dialect;
-                option.innerText = d.dialect;
-                if (d.dialect === data.default_dialect) {
-                    option.selected = true;
-                }
-                ttsDialectSelect.appendChild(option);
-            });
-        } catch (error) {
-            console.error('تعذر تحميل قائمة اللهجات:', error);
-        }
-    }
-    loadTtsDialects();
-
-    // 1. جلب معلومات الجودة والفيديو
+    // ------------------------------------------------------------
+    // 1) فحص الفيديو
+    // ------------------------------------------------------------
     fetchBtn.addEventListener('click', async () => {
         const url = videoUrlInput.value.trim();
         if (!url) { alert('الرجاء إدخال رابط فيديو صحيح أولاً!'); return; }
@@ -223,6 +405,7 @@
         videoDetails.style.display = 'none';
         successSection.style.display = 'none';
         transcribeContainer.style.display = 'none';
+        resetStudioUI();
 
         try {
             const response = await fetch('/api/video/info', {
@@ -232,12 +415,11 @@
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
+                const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.detail || 'فشل الفحص من طرف السيرفر.');
             }
 
             const data = await response.json();
-
             currentUrl = url;
             document.getElementById('video-thumb').src = data.thumbnail;
             document.getElementById('video-title').innerText = data.title;
@@ -266,7 +448,9 @@
         }
     });
 
-    // 2. بدء مهمة التحميل على السيرفر ثم متابعتها حتى تكتمل (Job + Polling)
+    // ------------------------------------------------------------
+    // 2) تحميل الفيديو
+    // ------------------------------------------------------------
     downloadBtn.addEventListener('click', async () => {
         const formatId = document.getElementById('format-select').value;
         if (!formatId) { alert('الرجاء اختيار جودة صالحة!'); return; }
@@ -274,6 +458,7 @@
         downloadBtn.disabled = true;
         successSection.style.display = 'none';
         transcribeContainer.style.display = 'none';
+        resetStudioUI();
 
         downloadProgressWrap.style.display = 'block';
         downloadProgressMessage.style.display = 'block';
@@ -294,7 +479,6 @@
             }
 
             const startData = await startRes.json();
-
             const result = await pollJob(startData.job_id, '/api/video/jobs', {
                 onProgress: (job) => {
                     downloadProgressBar.style.width = `${job.progress}%`;
@@ -315,13 +499,16 @@
         }
     });
 
-    // 3. بدء مهمة تحويل الصوت إلى نص ثم متابعتها حتى تكتمل (Job + Polling)
+    // ------------------------------------------------------------
+    // 3) تفريغ الصوت إلى نص + استلام المقاطع الزمنية وقمم الموجة
+    // ------------------------------------------------------------
     transcribeBtn.addEventListener('click', async () => {
         const videoUrl = document.getElementById('final-download-link').getAttribute('href');
         if (!videoUrl) return;
 
         transcribeBtn.disabled = true;
         transcribeContainer.style.display = 'none';
+        resetStudioUI();
 
         transcribeProgressWrap.style.display = 'block';
         transcribeProgressMessage.style.display = 'block';
@@ -342,7 +529,6 @@
             }
 
             const startData = await startRes.json();
-
             const result = await pollJob(startData.job_id, '/api/video/jobs', {
                 onProgress: (job) => {
                     transcribeProgressBar.style.width = `${job.progress}%`;
@@ -354,18 +540,22 @@
             const transcriptText = result.transcription || "";
             const detectedLanguage = (result.language || 'unknown').toLowerCase();
 
+            // نحتفظ بالتوقيتات الحقيقية وقمم الموجة لاستخدامها في الاستوديو
+            transcriptionData = {
+                segments: Array.isArray(result.segments) ? result.segments : [],
+                peaks: Array.isArray(result.peaks) ? result.peaks : [],
+                language: detectedLanguage,
+                audioDuration: Number(result.audio_duration) || 0,
+            };
+
             transcribeOutput.innerText = transcriptText || "لم يتم العثور على كلمات منطوقة مفهومة في المقطع.";
             transcribeOutput.dataset.language = detectedLanguage;
-
             detectedLanguageLabel.innerText = detectedLanguage === 'ar' ? 'عربي' : detectedLanguage;
 
-            // إخفاء نتيجة ترجمة/صوت سابقة إن وجدت
             translateContainer.style.display = 'none';
             translateOutput.value = '';
-            ttsAudioPlayer.style.display = 'none';
-            ttsDownloadLink.style.display = 'none';
+            resetStudioUI();
 
-            // إظهار زر الترجمة فقط إذا كان النص المكتشف ليس عربيًا أصلاً
             if (transcriptText && detectedLanguage !== 'ar') {
                 translateBtn.style.display = 'inline-block';
             } else {
@@ -383,88 +573,59 @@
         }
     });
 
-    async function translateCurrentText() {
+    // ------------------------------------------------------------
+    // 4) الترجمة (النص الكامل للعرض) ثم تهيئة الاستوديو
+    // ------------------------------------------------------------
+    async function requestTranslation(sourceText) {
+        const response = await fetch('/api/video/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: sourceText,
+                source_lang: transcribeOutput.dataset.language || 'en',
+                target_lang: 'ar'
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || 'فشلت عملية الترجمة.');
+        }
+
+        const data = await response.json();
+        return data.translated_text || "تعذر الحصول على ترجمة.";
+    }
+
+    translateBtn.addEventListener('click', async () => {
         const textToTranslate = transcribeOutput.innerText.trim();
         if (!textToTranslate) return;
 
-        const buttonToUse = translateBtn.disabled ? refreshTranslateBtn : translateBtn;
-        buttonToUse.disabled = true;
-        buttonToUse.innerText = 'جاري الترجمة... ⏳';
+        translateBtn.disabled = true;
+        translateBtn.innerText = 'جاري الترجمة... ⏳';
 
         try {
-            const response = await fetch('/api/video/translate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: textToTranslate,
-                    source_lang: transcribeOutput.dataset.language || 'en',
-                    target_lang: 'ar'
-                })
-            });
-
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.detail || 'فشلت عملية الترجمة.');
-            }
-
-            const data = await response.json();
-
-            translateOutput.value = data.translated_text || "تعذر الحصول على ترجمة.";
+            translateOutput.value = await requestTranslation(textToTranslate);
             translateContainer.style.display = 'block';
-
-            // إخفاء أي نتيجة صوت سابقة عند وصول ترجمة جديدة
-            ttsAudioPlayer.style.display = 'none';
-            ttsDownloadLink.style.display = 'none';
-
             translateContainer.scrollIntoView({ behavior: 'smooth' });
+            await Studio.init();
         } catch (error) {
             alert('خطأ أثناء الترجمة: ' + error.message);
         } finally {
             translateBtn.disabled = false;
-            refreshTranslateBtn.disabled = false;
             translateBtn.innerText = 'ترجمة إلى العربية 🌐';
-            refreshTranslateBtn.innerText = 'تحديث الترجمة 🔄';
         }
-    }
-
-    // 4. ترجمة النص المفرّغ (يظهر فقط إذا لم يكن النص عربيًا أصلاً)
-    translateBtn.addEventListener('click', async () => {
-        await translateCurrentText();
     });
 
     refreshTranslateBtn.addEventListener('click', async () => {
-        const currentText = translateOutput.value.trim();
-        if (!currentText) {
-            alert('لا يوجد نص مترجم لتحديثه.');
-            return;
-        }
-
-        const originalSource = transcribeOutput.innerText.trim();
-        const sourceText = originalSource || currentText;
+        const sourceText = transcribeOutput.innerText.trim() || translateOutput.value.trim();
+        if (!sourceText) { alert('لا يوجد نص لتحديث ترجمته.'); return; }
 
         refreshTranslateBtn.disabled = true;
         refreshTranslateBtn.innerText = 'جاري التحديث... ⏳';
 
         try {
-            const response = await fetch('/api/video/translate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: sourceText,
-                    source_lang: transcribeOutput.dataset.language || 'en',
-                    target_lang: 'ar'
-                })
-            });
-
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.detail || 'فشل تحديث الترجمة.');
-            }
-
-            const data = await response.json();
-            translateOutput.value = data.translated_text || "تعذر الحصول على ترجمة.";
-            ttsAudioPlayer.style.display = 'none';
-            ttsDownloadLink.style.display = 'none';
+            translateOutput.value = await requestTranslation(sourceText);
+            await Studio.init();
         } catch (error) {
             alert('خطأ أثناء تحديث الترجمة: ' + error.message);
         } finally {
@@ -473,129 +634,830 @@
         }
     });
 
-    // ============================================================
-    // 5. تحويل النص العربي المترجم إلى صوت احترافي (رجل/امرأة)
-    //    يستخدم أصوات Microsoft Edge Neural المجانية - وليس صوت
-    //    قوقل الروبوتي الافتراضي.
-    // ============================================================
-    ttsBtn.addEventListener('click', async () => {
-        const textToSpeak = translateOutput.value.trim();
-        if (!textToSpeak) {
-            alert('لا يوجد نص عربي لتحويله إلى صوت بعد.');
-            return;
+    // ================================================================
+    // ============  استوديو الدبلجة الاحترافي (Timeline)  =============
+    // ================================================================
+    const Studio = (function () {
+        const MAX_TIMELINE_PX = 30000;   // حد عرض الكانفاس لتجنب سقوط المتصفح
+        const MIN_SEG_DURATION = 0.15;
+
+        const state = {
+            segments: [],
+            selectedId: null,
+            pxPerSecond: 90,
+            videoDuration: 0,   // مدة الفيديو الحقيقية - ثابتة، أساس المزامنة
+            duration: 0,        // امتداد الخط الزمني المرئي - قد يتجاوز الفيديو مؤقتاً
+            peaks: [],
+            peaksDuration: 0,
+            dragging: null,
+            isDraggingPlayhead: false,
+            timedSource: false, // هل التوقيتات من Whisper أم تقديرية؟
+        };
+
+        const breakout = document.getElementById('studio-breakout');
+        const videoEl = document.getElementById('studio-video');
+        const emptyMsg = document.getElementById('studio-empty');
+        const timelineOuter = document.getElementById('studio-timeline-outer');
+        const ruler = document.getElementById('studio-ruler');
+        const trackArea = document.getElementById('studio-track-area');
+        const waveformCanvas = document.getElementById('studioWaveform');
+        const segLayer = document.getElementById('studio-segments-layer');
+        const playhead = document.getElementById('studio-playhead');
+        const strip = document.getElementById('studio-strip');
+        const panel = document.getElementById('studio-panel');
+        const timeReadout = document.getElementById('studio-time');
+        const zoomRange = document.getElementById('studio-zoom');
+        const playBtn = document.getElementById('studio-playpause');
+        const dialectSelect = document.getElementById('studio-dialect');
+        const genderSelect = document.getElementById('studio-gender');
+        const autoFitBtn = document.getElementById('studio-auto-fit');
+        const sourceBadge = document.getElementById('studio-source-badge');
+
+        let audioPreviewEl = null;
+
+        function uid() { return 'seg_' + Math.random().toString(36).slice(2, 9); }
+
+        function fmtTime(sec) {
+            sec = Math.max(0, sec || 0);
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            const ms = Math.floor((sec % 1) * 1000);
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+        }
+        function timeToX(t) { return t * state.pxPerSecond; }
+        function xToTime(x) { return x / state.pxPerSecond; }
+
+        function maxPxPerSecond() {
+            if (!state.duration || state.duration <= 0) return 400;
+            return Math.max(5, MAX_TIMELINE_PX / state.duration);
+        }
+        function clampZoom() {
+            const cap = maxPxPerSecond();
+            if (state.pxPerSecond > cap) state.pxPerSecond = cap;
+            if (state.pxPerSecond < 2) state.pxPerSecond = 2;
+        }
+        function totalWidthPx() {
+            const w = Math.max(timelineOuter.clientWidth || 800, timeToX(state.duration) + 200);
+            return Math.min(w, MAX_TIMELINE_PX + 400);
         }
 
-        ttsBtn.disabled = true;
-        ttsAudioPlayer.style.display = 'none';
-        ttsDownloadLink.style.display = 'none';
-        dubResultWrap.style.display = 'none';
+        async function loadDialects() {
+            try {
+                const res = await fetch('/api/tts/voices');
+                if (!res.ok) return;
+                const data = await res.json();
+                dialectSelect.innerHTML = "";
+                data.dialects.forEach((d) => {
+                    const opt = document.createElement('option');
+                    opt.value = d.dialect;
+                    opt.innerText = d.dialect;
+                    if (d.dialect === data.default_dialect) opt.selected = true;
+                    dialectSelect.appendChild(opt);
+                });
+            } catch (e) { console.error('تعذر تحميل اللهجات', e); }
+        }
 
-        ttsProgressWrap.style.display = 'block';
-        ttsProgressMessage.style.display = 'block';
-        ttsProgressBar.style.width = '0%';
-        ttsProgressBar.innerText = '0%';
-        ttsProgressMessage.innerText = 'جاري إنشاء مهمة تحويل النص إلى صوت...';
+        function makeSegment(start, end, text, originalText) {
+            return {
+                id: uid(),
+                start: +Number(start).toFixed(3),
+                end: +Number(end).toFixed(3),
+                original_text: originalText || '',
+                text: text || '',
+                rate: 0,
+                gain: 100,
+                audioUrl: null,
+                status: 'stale',
+            };
+        }
 
-        try {
-            const startRes = await fetch('/api/tts', {
+        // مسار احتياطي فقط: يُستخدم إن لم تتوفر مقاطع Whisper
+        function splitIntoSegments(text, totalDuration) {
+            const rawSentences = text
+                .split(/(?<=[.!؟?])\s+|\n+/)
+                .map(s => s.trim())
+                .filter(Boolean);
+
+            if (rawSentences.length === 0) return [];
+
+            const totalChars = rawSentences.reduce((a, s) => a + s.length, 0) || 1;
+            let cursor = 0.0;
+            const gap = 0.15;
+            const usable = Math.max(1, totalDuration - gap * rawSentences.length);
+
+            return rawSentences.map((s) => {
+                const share = (s.length / totalChars) * usable;
+                const start = cursor;
+                const end = cursor + Math.max(0.5, share);
+                cursor = end + gap;
+                return makeSegment(start, end, s, '');
+            });
+        }
+
+        // ترجمة كل مقطع Whisper على حدة مع الحفاظ على توقيته الحقيقي
+        async function buildSegmentsFromWhisper() {
+            const ws = (transcriptionData.segments || []).filter(s => (s.text || '').trim());
+            if (!ws.length) return null;
+
+            const lang = (transcribeOutput.dataset.language || 'en').toLowerCase();
+
+            // النص عربي أصلاً: لا حاجة لترجمة، نستخدم المقاطع كما هي
+            if (lang === 'ar') {
+                return ws.map(s => makeSegment(s.start, s.end, s.text.trim(), s.text.trim()));
+            }
+
+            const res = await fetch('/api/video/translate-segments', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    text: textToSpeak,
-                    gender: ttsGenderSelect.value,
-                    dialect: ttsDialectSelect.value
+                    segments: ws.map(s => ({ start: s.start, end: s.end, text: s.text })),
+                    source_lang: lang,
+                    target_lang: 'ar'
                 })
             });
 
-            if (!startRes.ok) {
-                const err = await startRes.json().catch(() => ({}));
-                throw new Error(err.detail || 'فشل إنشاء مهمة تحويل النص إلى صوت.');
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'فشلت ترجمة المقاطع الزمنية.');
             }
 
-            const startData = await startRes.json();
+            const data = await res.json();
+            if (!Array.isArray(data.segments) || !data.segments.length) return null;
 
-            const result = await pollJob(startData.job_id, '/api/tts/jobs', {
-                onProgress: (job) => {
-                    ttsProgressBar.style.width = `${job.progress}%`;
-                    ttsProgressBar.innerText = `${job.progress}%`;
-                    ttsProgressMessage.innerText = job.message || 'جاري المعالجة...';
+            return data.segments.map(s => makeSegment(s.start, s.end, s.text, s.original_text));
+        }
+
+        // مزامنة اختيارية: تمديد/ضغط كل المقاطع لتغطي مدة الفيديو الحقيقية
+        function autoFitSegments() {
+            if (!state.segments.length || !state.videoDuration) return;
+
+            const currentMaxEnd = Math.max(...state.segments.map(s => s.end));
+            if (currentMaxEnd <= 0) return;
+
+            const scaleFactor = state.videoDuration / currentMaxEnd;
+
+            state.segments.forEach(seg => {
+                seg.start = +(seg.start * scaleFactor).toFixed(3);
+                seg.end = +(seg.end * scaleFactor).toFixed(3);
+                seg.status = 'stale';
+            });
+
+            state.duration = state.videoDuration;
+            clampZoom();
+            renderAll();
+        }
+
+        autoFitBtn.addEventListener('click', () => {
+            if (state.timedSource &&
+                !confirm('التوقيتات الحالية مأخوذة من تحليل الكلام الفعلي وهي دقيقة. المزامنة القسرية قد تُفسدها. هل تريد المتابعة؟')) {
+                return;
+            }
+            autoFitSegments();
+        });
+
+        function showStudioError(message) {
+            emptyMsg.className = 'studio-empty-msg error';
+            emptyMsg.textContent = 'تعذر تجهيز الاستوديو: ' + message;
+            emptyMsg.style.display = 'block';
+            timelineOuter.style.display = 'none';
+            strip.style.display = 'none';
+        }
+
+        async function waitForVideoMetadata() {
+            if (videoEl.readyState >= 1) return;
+            await new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    cleanup();
+                    reject(new Error('انتهت مهلة تحميل الفيديو (30 ثانية).'));
+                }, 30000);
+
+                function cleanup() {
+                    clearTimeout(timer);
+                    videoEl.removeEventListener('loadedmetadata', onOk);
+                    videoEl.removeEventListener('error', onErr);
                 }
+                function onOk() { cleanup(); resolve(); }
+                function onErr() { cleanup(); reject(new Error('تعذر تحميل ملف الفيديو من السيرفر.')); }
+
+                videoEl.addEventListener('loadedmetadata', onOk);
+                videoEl.addEventListener('error', onErr);
             });
-
-            ttsAudioPlayer.src = result.audio_url;
-            ttsAudioPlayer.style.display = 'block';
-
-            ttsDownloadLink.href = result.audio_url;
-            ttsDownloadLink.style.display = 'inline-block';
-
-            dubBtn.disabled = false;
-            ttsAudioPlayer.scrollIntoView({ behavior: 'smooth' });
-        } catch (error) {
-            alert('خطأ أثناء تحويل النص إلى صوت: ' + error.message);
-        } finally {
-            ttsBtn.disabled = false;
-            ttsProgressWrap.style.display = 'none';
-            ttsProgressMessage.style.display = 'none';
-        }
-    });
-
-    dubBtn.addEventListener('click', async () => {
-        const videoHref = document.getElementById('final-download-link').getAttribute('href');
-        const audioHref = ttsAudioPlayer.getAttribute('src');
-
-        if (!videoHref || !audioHref) {
-            alert('يجب أولاً إنشاء فيديو أصلي ثم توليد الصوت المترجم.');
-            return;
         }
 
-        const originalVideoName = decodeURIComponent(videoHref.split('/').pop() || '');
-        const translatedAudioName = decodeURIComponent(audioHref.split('/').pop() || '');
+        async function init() {
+            const translated = document.getElementById('translate-output').value.trim();
+            const videoHref = document.getElementById('final-download-link').getAttribute('href');
+            if (!translated || !videoHref) return;
 
-        dubBtn.disabled = true;
-        dubBtn.innerText = 'جاري دمج الصوت... ⏳';
-        dubSuccessMessage.style.display = 'none';
-        dubErrorMessage.style.display = 'none';
-        dubVideoPlayer.style.display = 'none';
-        dubDownloadLink.style.display = 'none';
+            breakout.style.display = 'block';
+            emptyMsg.className = 'studio-empty-msg';
+            emptyMsg.textContent = 'جاري تجهيز موجة الصوت وتقسيم الجمل تلقائياً...';
+            emptyMsg.style.display = 'block';
+            timelineOuter.style.display = 'none';
+            strip.style.display = 'none';
 
-        try {
-            const response = await fetch('/api/video/dub', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    video_url: originalVideoName,
-                    audio_url: translatedAudioName,
-                    original_gain: 0.08,
-                    dub_gain: 1.0
-                })
-            });
+            state.segments = [];
+            state.selectedId = null;
+            state.peaks = [];
 
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.detail || 'فشل دمج الصوت على الفيديو الأصلي.');
+            try {
+                videoEl.src = videoHref;
+                await waitForVideoMetadata();
+
+                state.videoDuration = videoEl.duration || 30;
+                state.duration = state.videoDuration;
+
+                // موجة الصوت جاهزة من السيرفر: لا تحميل ثانٍ للفيديو ولا فك ترميز في المتصفح
+                state.peaks = transcriptionData.peaks || [];
+                state.peaksDuration = transcriptionData.audioDuration || state.videoDuration;
+
+                let segments = null;
+                try {
+                    segments = await buildSegmentsFromWhisper();
+                } catch (e) {
+                    console.warn('تعذرت ترجمة المقاطع الزمنية، سيتم استخدام التقسيم التقريبي:', e);
+                }
+
+                if (segments && segments.length) {
+                    state.timedSource = true;
+                    sourceBadge.className = 'studio-badge';
+                    sourceBadge.textContent = '🎯 التوقيت من تحليل الكلام الفعلي';
+                } else {
+                    state.timedSource = false;
+                    segments = splitIntoSegments(translated, state.videoDuration);
+                    sourceBadge.className = 'studio-badge warn';
+                    sourceBadge.textContent = '⚠️ توقيت تقريبي - راجع المقاطع يدوياً';
+                }
+
+                if (!segments.length) throw new Error('لا توجد جمل صالحة لبناء الخط الزمني.');
+
+                state.segments = segments;
+
+                const maxEnd = Math.max(...segments.map(s => s.end));
+                if (maxEnd > state.duration) state.duration = maxEnd + 2;
+
+                clampZoom();
+                zoomRange.value = Math.round(state.pxPerSecond);
+
+                emptyMsg.style.display = 'none';
+                timelineOuter.style.display = 'block';
+                strip.style.display = 'flex';
+
+                renderAll();
+                breakout.scrollIntoView({ behavior: 'smooth' });
+            } catch (e) {
+                console.error(e);
+                showStudioError(e.message || 'خطأ غير معروف.');
+            }
+        }
+
+        function drawWaveform() {
+            const width = totalWidthPx();
+            const height = 100;
+            const dpr = window.devicePixelRatio || 1;
+
+            waveformCanvas.style.width = width + 'px';
+            waveformCanvas.width = Math.floor(width * dpr);
+            waveformCanvas.height = Math.floor(height * dpr);
+
+            const ctx = waveformCanvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, width, height);
+
+            // خطوط شبكة كل ثانية (فقط إن كانت المسافة كافية)
+            if (state.pxPerSecond >= 12) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+                for (let t = 0; t < state.duration; t++) {
+                    const x = Math.round(timeToX(t)) + 0.5;
+                    if (x > width) break;
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+                }
             }
 
-            const data = await response.json();
-            const finalVideoUrl = data.video_url;
+            const peaks = state.peaks;
+            const mid = height / 2;
 
-            dubVideoPlayer.src = finalVideoUrl;
-            dubVideoPlayer.style.display = 'block';
-            dubVideoPlayer.load();
-            dubDownloadLink.href = finalVideoUrl;
-            dubDownloadLink.style.display = 'inline-block';
-            dubResultWrap.style.display = 'block';
-            dubSuccessMessage.style.display = 'block';
-            dubResultWrap.scrollIntoView({ behavior: 'smooth' });
-            dubVideoPlayer.play().catch(() => {});
-        } catch (error) {
-            dubResultWrap.style.display = 'block';
-            dubErrorMessage.style.display = 'block';
-            dubErrorMessage.innerText = '❌ فشل دمج الفيديو: ' + error.message;
-            alert('خطأ أثناء دمج الصوت على الفيديو: ' + error.message);
-        } finally {
-            dubBtn.disabled = false;
-            dubBtn.innerText = 'دمج الصوت على الفيديو الأصلي 🎬';
+            if (!peaks || !peaks.length) {
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillRect(0, mid - 1, width, 2);
+                return;
+            }
+
+            const dur = state.peaksDuration || state.videoDuration || 1;
+            ctx.strokeStyle = '#4FD1C5';
+            ctx.beginPath();
+
+            for (let x = 0; x < width; x++) {
+                const t = xToTime(x);
+                if (t > dur) break;
+                const i = Math.min(peaks.length - 1, Math.floor((t / dur) * peaks.length));
+                const p = peaks[i];
+                if (!p) continue;
+                ctx.moveTo(x, mid - p[1] * mid * 0.95);
+                ctx.lineTo(x, mid - p[0] * mid * 0.95);
+            }
+            ctx.stroke();
         }
-    });
+
+        function niceStep() {
+            // نختار خطوة تجعل المسافة بين العلامات ~80 بكسل على الأقل
+            const candidates = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+            for (const c of candidates) {
+                if (c * state.pxPerSecond >= 80) return c;
+            }
+            return 900;
+        }
+
+        function renderRuler() {
+            const width = totalWidthPx();
+            ruler.style.width = width + 'px';
+            ruler.innerHTML = '';
+
+            const step = niceStep();
+            const frag = document.createDocumentFragment();
+
+            for (let t = 0; t <= state.duration + step; t += step) {
+                const x = timeToX(t);
+                if (x > width) break;
+                const tick = document.createElement('div');
+                tick.className = 'studio-tick';
+                tick.style.left = x + 'px';
+                const label = document.createElement('span');
+                label.textContent = fmtTime(t).slice(0, 5);
+                tick.appendChild(label);
+                frag.appendChild(tick);
+            }
+            ruler.appendChild(frag);
+        }
+
+        function overlappingIds() {
+            const sorted = state.segments.slice().sort((a, b) => a.start - b.start);
+            const ids = new Set();
+            for (let i = 1; i < sorted.length; i++) {
+                if (sorted[i].start < sorted[i - 1].end) {
+                    ids.add(sorted[i].id);
+                    ids.add(sorted[i - 1].id);
+                }
+            }
+            return ids;
+        }
+
+        function renderSegments() {
+            segLayer.style.width = totalWidthPx() + 'px';
+            segLayer.innerHTML = '';
+
+            const overlaps = overlappingIds();
+            const ordered = state.segments.slice().sort((a, b) => a.start - b.start);
+            const frag = document.createDocumentFragment();
+
+            ordered.forEach((seg, index) => {
+                const el = document.createElement('div');
+                el.className = 'studio-segment' +
+                    (seg.id === state.selectedId ? ' selected' : '') +
+                    (seg.status === 'ready' ? ' ready' : '') +
+                    (overlaps.has(seg.id) ? ' overlap' : '');
+                el.style.left = timeToX(seg.start) + 'px';
+                el.style.width = Math.max(6, timeToX(seg.end - seg.start)) + 'px';
+                el.title = seg.text;
+
+                const lbl = document.createElement('div');
+                lbl.className = 'lbl';
+                lbl.textContent = seg.text;
+                el.appendChild(lbl);
+
+                const idx = document.createElement('div');
+                idx.className = 'idx';
+                idx.textContent = `#${index + 1} · ${fmtTime(seg.start).slice(0, 8)}`;
+                el.appendChild(idx);
+
+                const hl = document.createElement('div'); hl.className = 'h l';
+                hl.addEventListener('mousedown', (e) => startDrag(e, seg.id, 'resize-left'));
+                const hr = document.createElement('div'); hr.className = 'h r';
+                hr.addEventListener('mousedown', (e) => startDrag(e, seg.id, 'resize-right'));
+                el.appendChild(hl); el.appendChild(hr);
+
+                el.addEventListener('mousedown', (e) => {
+                    if (e.target === hl || e.target === hr) return;
+                    startDrag(e, seg.id, 'move');
+                });
+                el.addEventListener('click', (e) => { e.stopPropagation(); select(seg.id); });
+
+                frag.appendChild(el);
+            });
+
+            segLayer.appendChild(frag);
+        }
+
+        function startDrag(e, id, mode) {
+            e.preventDefault(); e.stopPropagation();
+            const seg = state.segments.find(s => s.id === id);
+            if (!seg) return;
+            state.dragging = { id, mode, startX: e.clientX, origStart: seg.start, origEnd: seg.end };
+            select(id);
+        }
+
+        function getTimeFromMouse(e) {
+            const rect = trackArea.getBoundingClientRect();
+            const x = e.clientX - rect.left + timelineOuter.scrollLeft;
+            return xToTime(x);
+        }
+
+        trackArea.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.studio-segment')) return;
+            state.isDraggingPlayhead = true;
+            seekTo(getTimeFromMouse(e));
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (state.isDraggingPlayhead) {
+                e.preventDefault();
+                seekTo(getTimeFromMouse(e));
+                return;
+            }
+
+            const d = state.dragging;
+            if (!d) return;
+            const seg = state.segments.find(s => s.id === d.id);
+            if (!seg) return;
+
+            const delta = xToTime(e.clientX - d.startX);
+
+            if (d.mode === 'move') {
+                let ns = d.origStart + delta, ne = d.origEnd + delta;
+                if (ns < 0) { ne -= ns; ns = 0; }
+                seg.start = +ns.toFixed(3); seg.end = +ne.toFixed(3);
+            } else if (d.mode === 'resize-left') {
+                seg.start = +Math.min(d.origEnd - MIN_SEG_DURATION, Math.max(0, d.origStart + delta)).toFixed(3);
+            } else if (d.mode === 'resize-right') {
+                seg.end = +Math.max(d.origStart + MIN_SEG_DURATION, d.origEnd + delta).toFixed(3);
+            }
+
+            if (seg.end > state.duration) state.duration = seg.end + 2;
+            seg.status = 'stale';
+
+            // لا نعيد بناء اللوحة بالكامل أثناء السحب - نحدّث سطر الوقت فقط
+            renderSegments();
+            const hint = panel.querySelector('.studio-hint.studio-mono');
+            if (hint) hint.textContent = `${fmtTime(seg.start)} → ${fmtTime(seg.end)}`;
+        });
+
+        document.addEventListener('mouseup', () => {
+            const wasDragging = state.dragging;
+            state.isDraggingPlayhead = false;
+
+            if (wasDragging) {
+                state.dragging = null;
+                // نُعيد ضبط امتداد الخط الزمني على أساس المحتوى الفعلي بدل تركه منتفخاً
+                const maxEnd = state.segments.length ? Math.max(...state.segments.map(s => s.end)) : 0;
+                state.duration = Math.max(state.videoDuration, maxEnd + 2);
+                clampZoom();
+                renderAll();
+            }
+        });
+
+        function select(id) { state.selectedId = id; renderSegments(); renderPanel(); renderStrip(); }
+
+        function renderStrip() {
+            strip.innerHTML = '';
+            const frag = document.createDocumentFragment();
+
+            state.segments.slice().sort((a, b) => a.start - b.start).forEach((seg, i) => {
+                const chip = document.createElement('div');
+                chip.className = 'studio-chip' + (seg.id === state.selectedId ? ' active' : '');
+
+                const dot = document.createElement('span');
+                dot.className = 'dot' + (seg.status === 'ready' ? ' ready' : '');
+                chip.appendChild(dot);
+                chip.appendChild(document.createTextNode(`#${i + 1} `));
+
+                const t = document.createElement('span');
+                t.className = 't';
+                t.textContent = fmtTime(seg.start).slice(0, 8);
+                chip.appendChild(t);
+
+                chip.addEventListener('click', () => { select(seg.id); seekTo(seg.start); });
+                frag.appendChild(chip);
+            });
+
+            strip.appendChild(frag);
+        }
+
+        function renderPanel() {
+            const seg = state.segments.find(s => s.id === state.selectedId);
+            if (!seg) {
+                panel.innerHTML = '<div class="studio-panel-empty">اختر مقطعاً من الخط الزمني أعلاه لتحرير نصه وتوقيته وصوته.</div>';
+                return;
+            }
+
+            const statusText = seg.status === 'ready'
+                ? '✅ الصوت جاهز'
+                : (seg.status === 'generating' ? '⏳ جاري التوليد...' : '⚪ يحتاج توليد صوت');
+
+            panel.innerHTML = `
+              <div class="studio-panel-grid">
+                <div>
+                  <div class="studio-field">
+                    <label>النص المترجم لهذا المقطع</label>
+                    <textarea id="s-text"></textarea>
+                  </div>
+                  <div class="studio-hint studio-mono">${fmtTime(seg.start)} → ${fmtTime(seg.end)}</div>
+                  <div class="studio-original" id="s-original" style="display:none;"></div>
+                </div>
+                <div>
+                  <div class="studio-field">
+                    <label>السرعة (Rate)</label>
+                    <div class="studio-slider-row">
+                      <input type="range" id="s-rate" min="-50" max="50" value="${seg.rate}">
+                      <div class="val studio-mono" id="s-rate-val">${seg.rate > 0 ? '+' : ''}${seg.rate}%</div>
+                    </div>
+                  </div>
+                  <div class="studio-field">
+                    <label>مستوى الصوت (Gain)</label>
+                    <div class="studio-slider-row">
+                      <input type="range" id="s-gain" min="0" max="200" value="${seg.gain}">
+                      <div class="val studio-mono" id="s-gain-val">${seg.gain}%</div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div class="studio-hint" style="margin-bottom:8px;">${statusText}</div>
+                  <div class="studio-panel-actions">
+                    <button class="studio-btn gold" id="s-gen">🔊 توليد صوت المقطع</button>
+                    <button class="studio-btn" id="s-preview" ${seg.status === 'ready' ? '' : 'disabled'}>▶️ معاينة المقطع</button>
+                    <button class="studio-btn danger" id="s-del">🗑 حذف</button>
+                  </div>
+                </div>
+              </div>
+            `;
+
+            // تمرير النص برمجياً: أي نص يحتوي على وسوم كان سيكسر اللوحة لو حُقن كـ HTML
+            const textArea = document.getElementById('s-text');
+            textArea.value = seg.text;
+
+            if (seg.original_text) {
+                const orig = document.getElementById('s-original');
+                orig.style.display = 'block';
+                orig.textContent = 'الأصل: ' + seg.original_text;
+            }
+
+            textArea.addEventListener('input', (e) => {
+                seg.text = e.target.value; seg.status = 'stale';
+                renderSegments(); renderStrip();
+            });
+            document.getElementById('s-rate').addEventListener('input', (e) => {
+                seg.rate = +e.target.value; seg.status = 'stale';
+                document.getElementById('s-rate-val').textContent = (seg.rate > 0 ? '+' : '') + seg.rate + '%';
+                renderStrip();
+            });
+            document.getElementById('s-gain').addEventListener('input', (e) => {
+                seg.gain = +e.target.value;
+                document.getElementById('s-gain-val').textContent = seg.gain + '%';
+            });
+            document.getElementById('s-gen').addEventListener('click', () => generateSegmentAudio(seg));
+            document.getElementById('s-preview').addEventListener('click', () => previewSegment(seg));
+            document.getElementById('s-del').addEventListener('click', () => {
+                state.segments = state.segments.filter(s => s.id !== seg.id);
+                state.selectedId = null;
+                renderAll();
+            });
+        }
+
+        async function generateSegmentAudio(seg) {
+            if (!(seg.text || '').trim()) {
+                alert('لا يمكن توليد صوت لمقطع بنص فارغ.');
+                return;
+            }
+
+            seg.status = 'generating';
+            renderPanel(); renderSegments(); renderStrip();
+
+            try {
+                const rateStr = (seg.rate >= 0 ? '+' : '') + seg.rate + '%';
+                const startRes = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: seg.text,
+                        gender: genderSelect.value,
+                        dialect: dialectSelect.value,
+                        rate: rateStr,
+                        pitch: '+0Hz',
+                    })
+                });
+
+                if (!startRes.ok) {
+                    const err = await startRes.json().catch(() => ({}));
+                    throw new Error(err.detail || 'فشل بدء توليد الصوت.');
+                }
+
+                const startData = await startRes.json();
+                const result = await pollJob(startData.job_id, '/api/tts/jobs');
+                seg.audioUrl = result.audio_url;
+                seg.ttsDuration = Number(result.duration) || 0;
+                seg.status = 'ready';
+            } catch (e) {
+                seg.status = 'stale';
+                alert('فشل توليد صوت المقطع: ' + e.message);
+            } finally {
+                renderPanel(); renderSegments(); renderStrip();
+            }
+        }
+
+        document.getElementById('studio-gen-all').addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const pending = state.segments.filter(s => s.status !== 'ready');
+            if (!pending.length) { alert('كل المقاطع لديها صوت مُولَّد بالفعل.'); return; }
+
+            btn.disabled = true;
+            let done = 0;
+            try {
+                for (const seg of state.segments) {
+                    if (seg.status === 'ready') continue;
+                    btn.innerText = `⏳ ${++done}/${pending.length}`;
+                    await generateSegmentAudio(seg);
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '🔊 توليد كل الأصوات';
+            }
+        });
+
+        function previewSegment(seg) {
+            if (!seg.audioUrl) return;
+            if (audioPreviewEl) { audioPreviewEl.pause(); audioPreviewEl = null; }
+            audioPreviewEl = new Audio(seg.audioUrl);
+            audioPreviewEl.volume = Math.min(1, seg.gain / 100);
+            audioPreviewEl.play().catch(() => {});
+        }
+
+        function seekTo(t) {
+            t = Math.max(0, Math.min(state.videoDuration || t, t));
+            if (videoEl.src) {
+                try { videoEl.currentTime = t; } catch (e) { /* قبل جهوز الميتاداتا */ }
+            }
+            updatePlayhead(t);
+        }
+
+        function updatePlayhead(t) {
+            playhead.style.left = timeToX(t) + 'px';
+            timeReadout.textContent = `${fmtTime(t)} / ${fmtTime(state.videoDuration)}`;
+        }
+
+        let lastFiredSegId = null;
+
+        videoEl.addEventListener('seeking', () => { lastFiredSegId = null; });
+        videoEl.addEventListener('ended', () => { lastFiredSegId = null; });
+
+        videoEl.addEventListener('timeupdate', () => {
+            updatePlayhead(videoEl.currentTime);
+            if (videoEl.paused) return;
+
+            const now = videoEl.currentTime;
+            const active = state.segments.find(
+                s => now >= s.start && now < s.start + 0.35 && s.status === 'ready' && s.audioUrl
+            );
+
+            if (active && active.id !== lastFiredSegId) {
+                lastFiredSegId = active.id;
+                const a = new Audio(active.audioUrl);
+                a.volume = Math.min(1, active.gain / 100);
+                a.play().catch(() => {});
+            }
+        });
+
+        videoEl.addEventListener('play', () => { playBtn.textContent = '⏸ إيقاف مؤقت'; });
+        videoEl.addEventListener('pause', () => { playBtn.textContent = '▶️ تشغيل'; });
+        playBtn.addEventListener('click', () => {
+            if (!videoEl.src) return;
+            if (videoEl.paused) videoEl.play(); else videoEl.pause();
+        });
+
+        zoomRange.addEventListener('input', (e) => {
+            state.pxPerSecond = +e.target.value;
+            clampZoom();
+            e.target.value = Math.round(state.pxPerSecond);
+            renderAll();
+        });
+
+        document.getElementById('studio-add-seg').addEventListener('click', () => {
+            const sorted = state.segments.slice().sort((a, b) => a.start - b.start);
+            const last = sorted[sorted.length - 1];
+            const start = last ? last.end + 0.2 : 0;
+            const seg = makeSegment(start, start + 2, 'نص جديد...', '');
+            state.segments.push(seg);
+            if (seg.end > state.duration) { state.duration = seg.end + 2; clampZoom(); }
+            renderAll();
+            select(seg.id);
+        });
+
+        const exportBtn = document.getElementById('studio-export');
+        const exportProgressWrap = document.getElementById('studio-export-progress');
+        const exportBar = document.getElementById('studio-export-bar');
+        const exportMessage = document.getElementById('studio-export-message');
+        const exportResult = document.getElementById('studio-export-result');
+        const exportFinalLink = document.getElementById('studio-final-link');
+
+        function showExportProgress(show) {
+            exportProgressWrap.style.display = show ? 'block' : 'none';
+            if (show) exportResult.style.display = 'none';
+        }
+        function updateExportProgress(progress, message) {
+            exportBar.style.width = progress + '%';
+            exportBar.innerText = progress + '%';
+            exportMessage.innerText = message || 'جاري المعالجة...';
+        }
+        function showExportResult(videoUrl) {
+            exportResult.style.display = 'block';
+            exportFinalLink.href = videoUrl;
+            exportResult.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        exportBtn.addEventListener('click', async () => {
+            const notReady = state.segments.filter(s => s.status !== 'ready' || !s.audioUrl);
+            if (notReady.length > 0 &&
+                !confirm(`يوجد ${notReady.length} مقطع بدون صوت مُولَّد. سيتم استبعادها من الدمج النهائي. هل تريد المتابعة؟`)) {
+                return;
+            }
+
+            const readySegments = state.segments
+                .slice().sort((a, b) => a.start - b.start)
+                .filter(s => s.status === 'ready' && s.audioUrl)
+                .map(s => ({ start: s.start, end: s.end, audio_url: s.audioUrl, gain: s.gain }));
+
+            if (readySegments.length === 0) {
+                alert('لا يوجد أي مقطع جاهز للدمج. الرجاء توليد الصوت أولاً.');
+                return;
+            }
+
+            // تحذير من التداخل الزمني: مقطعان متداخلان يعني صوتين فوق بعضهما في المخرج
+            let overlapCount = 0;
+            for (let i = 1; i < readySegments.length; i++) {
+                if (readySegments[i].start < readySegments[i - 1].end) overlapCount++;
+            }
+            if (overlapCount > 0 &&
+                !confirm(`يوجد ${overlapCount} تداخل زمني بين المقاطع، وسيُسمع الصوتان معاً في نفس اللحظة. هل تريد المتابعة؟`)) {
+                return;
+            }
+
+            const videoHref = document.getElementById('final-download-link').getAttribute('href');
+            if (!videoHref) {
+                alert('لم يتم العثور على ملف الفيديو الأصلي.');
+                return;
+            }
+
+            exportBtn.disabled = true;
+            exportBtn.innerText = 'جاري الدمج... ⏳';
+            showExportProgress(true);
+            updateExportProgress(0, 'جاري إنشاء مهمة الدمج النهائي...');
+
+            try {
+                const startRes = await fetch('/api/video/dub-timeline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        video_url: videoHref,
+                        segments: readySegments,
+                        original_gain: 0.08,
+                        max_speed_factor: 2.0,
+                    })
+                });
+
+                if (!startRes.ok) {
+                    const err = await startRes.json().catch(() => ({}));
+                    throw new Error(err.detail || 'فشل بدء مهمة الدمج النهائي.');
+                }
+
+                const startData = await startRes.json();
+                const result = await pollJob(startData.job_id, '/api/video/jobs', {
+                    onProgress: (job) => updateExportProgress(job.progress, job.message)
+                });
+
+                showExportResult(result.video_url);
+            } catch (error) {
+                alert('خطأ أثناء الدمج النهائي: ' + error.message);
+            } finally {
+                exportBtn.disabled = false;
+                exportBtn.innerText = 'تصدير للدمج النهائي 🚀';
+                showExportProgress(false);
+            }
+        });
+
+        function renderAll() {
+            clampZoom();
+            renderRuler(); drawWaveform(); renderSegments(); renderStrip(); renderPanel();
+            updatePlayhead(videoEl.currentTime || 0);
+        }
+
+        loadDialects();
+
+        let resizeTimer = null;
+        window.addEventListener('resize', () => {
+            if (!state.segments.length) return;
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(renderAll, 150);
+        });
+
+        return { init };
+    })();
 </script>
 {% endblock content %}

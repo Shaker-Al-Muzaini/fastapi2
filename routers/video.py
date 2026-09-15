@@ -1,16 +1,18 @@
 import os
 import re
 import wave
+import array
 import asyncio
 import logging
 import subprocess
 import threading
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field, field_validator
+from fastapi import APIRouter, FastAPI, HTTPException, status
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 import yt_dlp
 import imageio_ffmpeg
@@ -45,15 +47,22 @@ MAX_ACTIVE_JOBS = int(os.environ.get("MAX_ACTIVE_JOBS", 50))
 
 MAX_TTS_TEXT_LENGTH = int(os.environ.get("MAX_TTS_TEXT_LENGTH", 5000))
 
+# حد أقصى لعدد المقاطع في مهمة دمج واحدة (حماية من انفجار filter_complex)
+MAX_DUB_TIMELINE_SEGMENTS = int(os.environ.get("MAX_DUB_TIMELINE_SEGMENTS", 200))
+
+# حد أقصى لعدد المقاطع في طلب ترجمة مقاطع واحد
+MAX_TRANSLATE_SEGMENTS = int(os.environ.get("MAX_TRANSLATE_SEGMENTS", 500))
+
+# عدد نقاط موجة الصوت التي تُرسل للواجهة لرسم الـ waveform
+WAVEFORM_BUCKETS = int(os.environ.get("WAVEFORM_BUCKETS", 2000))
+
 
 def sanitize_filename(filename: str) -> str:
     """
     تنظيف اسم الملف من الأحرف الخاصة والمساحات والإيموجي لمنع مشاكل الـ HTTP 404 والـ Encoding
     """
     base, ext = os.path.splitext(filename)
-    # استبدال أي رمز ليس حرفًا أو رقمًا بـ underscore
     clean_base = re.sub(r'[^\w\-_]', '_', base)
-    # دمج المكرر من _
     clean_base = re.sub(r'_+', '_', clean_base).strip('_')
     if not clean_base:
         clean_base = "file_" + uuid.uuid4().hex[:6]
@@ -114,6 +123,105 @@ def get_wav_duration_seconds(wav_path: str) -> float:
 
 
 # ============================================================
+# [إصلاح #6] حساب موجة الصوت على السيرفر بدل تحميل الفيديو كاملاً
+# في المتصفح وفك ترميزه هناك (كان يستهلك ذاكرة هائلة ويُسقط التبويب).
+# نقرأ ملف الـ WAV (16kHz mono) على دفعات ونُخرج قائمة قمم مضغوطة.
+# ============================================================
+
+def compute_wav_peaks(wav_path: str, buckets: int = WAVEFORM_BUCKETS) -> list[list[float]]:
+    """
+    يُرجع قائمة [min, max] مُطبَّعة بين -1 و 1، بطول ~buckets،
+    لرسم موجة الصوت في الواجهة بتكلفة شبكة/ذاكرة ضئيلة جدًا.
+    """
+    peaks: list[list[float]] = []
+
+    try:
+        with wave.open(wav_path, "rb") as wf:
+            total_frames = wf.getnframes()
+            channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
+
+            if total_frames <= 0 or sample_width != 2:
+                return []
+
+            frames_per_bucket = max(1, total_frames // max(1, buckets))
+
+            while len(peaks) < buckets * 2:
+                raw = wf.readframes(frames_per_bucket)
+                if not raw:
+                    break
+
+                usable = len(raw) - (len(raw) % 2)
+                samples = array.array("h")
+                samples.frombytes(raw[:usable])
+
+                if channels > 1:
+                    samples = samples[::channels]
+
+                if not samples:
+                    continue
+
+                peaks.append(
+                    [
+                        round(min(samples) / 32768.0, 4),
+                        round(max(samples) / 32768.0, 4),
+                    ]
+                )
+
+    except Exception:
+        logger.exception("تعذر حساب قمم الموجة الصوتية: %s", wav_path)
+        return []
+
+    return peaks
+
+
+_DURATION_RE = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
+
+
+def get_media_duration_seconds(path: str) -> float:
+    """
+    يحصل على مدة أي ملف صوت/فيديو عبر قراءة مخرجات ffmpeg (بدون الحاجة لـ ffprobe،
+    لأن imageio_ffmpeg لا يوفره). يعمل على أي صيغة يدعمها ffmpeg نفسه.
+    """
+    try:
+        result = subprocess.run(
+            [FFMPEG_PATH, "-i", path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+        match = _DURATION_RE.search(result.stderr or "")
+        if match:
+            hours, minutes, seconds = match.groups()
+            return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    except Exception:
+        logger.exception("تعذر قراءة مدة الملف عبر ffmpeg: %s", path)
+
+    return 0.0
+
+
+def build_atempo_filters(factor: float) -> list[str]:
+    """
+    فلتر atempo في ffmpeg يقبل نطاق 0.5 إلى 2.0 فقط لكل استدعاء، فنُفكك أي معامل
+    أكبر/أصغر إلى سلسلة فلاتر متتالية تصل للنتيجة المطلوبة.
+    """
+    factor = max(0.5, min(factor, 4.0))
+    filters: list[float] = []
+    remaining = factor
+
+    while remaining > 2.0:
+        filters.append(2.0)
+        remaining /= 2.0
+    while remaining < 0.5:
+        filters.append(0.5)
+        remaining /= 0.5
+
+    filters.append(remaining)
+    return [f"atempo={f:.4f}" for f in filters]
+
+
+# ============================================================
 # Jobs Storage
 # ============================================================
 
@@ -133,6 +241,7 @@ DOWNLOAD_SEMAPHORE = asyncio.Semaphore(2)
 TRANSCRIBE_SEMAPHORE = asyncio.Semaphore(2)
 TTS_SEMAPHORE = asyncio.Semaphore(3)
 DUB_SEMAPHORE = asyncio.Semaphore(2)
+DUB_TIMELINE_SEMAPHORE = asyncio.Semaphore(1)
 
 
 # ============================================================
@@ -241,6 +350,8 @@ class JobCancelledError(Exception):
 # ============================================================
 
 async def cleanup_loop():
+    logger.info("بدأت حلقة التنظيف الدورية لملفات media والمهام المنتهية.")
+
     while True:
         try:
             cutoff = datetime.now(timezone.utc) - JOB_RETENTION
@@ -272,6 +383,9 @@ async def cleanup_loop():
                 except OSError:
                     logger.warning("تعذر حذف الملف القديم: %s", path)
 
+            if to_delete:
+                logger.info("تم تنظيف %d مهمة منتهية.", len(to_delete))
+
             now = datetime.now(timezone.utc)
             with INFO_CACHE_LOCK:
                 expired = [
@@ -280,10 +394,61 @@ async def cleanup_loop():
                 for url in expired:
                     del INFO_CACHE[url]
 
+        except asyncio.CancelledError:
+            logger.info("تم إيقاف حلقة التنظيف الدورية.")
+            raise
+
         except Exception:
             logger.exception("خطأ أثناء عملية التنظيف الدورية")
 
         await asyncio.sleep(600)
+
+
+# ============================================================
+# [إصلاح #4] lifespan بدل @router.on_event("startup")
+# ------------------------------------------------------------
+# أحداث on_event على مستوى APIRouter مهجورة ولا تُنفَّذ في النسخ
+# الحديثة من Starlette، وكانت النتيجة أن حلقة التنظيف لا تعمل إطلاقاً
+# وتتراكم ملفات media حتى يمتلئ القرص.
+#
+# الاستخدام في main.py:
+#
+#     from routers.video_router import lifespan, router, tts_router
+#     app = FastAPI(lifespan=lifespan)
+#     app.include_router(router, prefix="/api/video")
+#     app.include_router(tts_router, prefix="/api")
+#
+# إن كان لديك lifespan خاص بك بالفعل، استخدم start_cleanup_task/stop_cleanup_task
+# داخله بدلاً من ذلك.
+# ============================================================
+
+_cleanup_task: asyncio.Task | None = None
+
+
+def start_cleanup_task() -> None:
+    global _cleanup_task
+    if _cleanup_task is None or _cleanup_task.done():
+        _cleanup_task = asyncio.create_task(cleanup_loop())
+
+
+async def stop_cleanup_task() -> None:
+    global _cleanup_task
+    if _cleanup_task and not _cleanup_task.done():
+        _cleanup_task.cancel()
+        try:
+            await _cleanup_task
+        except asyncio.CancelledError:
+            pass
+    _cleanup_task = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_cleanup_task()
+    try:
+        yield
+    finally:
+        await stop_cleanup_task()
 
 
 # ============================================================
@@ -323,11 +488,57 @@ class TranslateRequest(BaseModel):
     target_lang: str = "ar"
 
 
+class TranslateSegmentItem(BaseModel):
+    """مقطع زمني واحد قادم من Whisper، بنصه الأصلي وتوقيته الحقيقي."""
+
+    start: float = Field(..., ge=0.0)
+    end: float = Field(..., ge=0.0)
+    text: str = Field("", max_length=5000)
+
+
+class TranslateSegmentsRequest(BaseModel):
+    """
+    ترجمة مقاطع Whisper واحداً واحداً مع الحفاظ على توقيت كل مقطع كما هو.
+    هذه هي البديل الصحيح عن تخمين التوقيت في الواجهة بالتناسب مع عدد الأحرف.
+    """
+
+    segments: list[TranslateSegmentItem] = Field(..., min_length=1)
+    source_lang: str = "en"
+    target_lang: str = "ar"
+
+
 class DubRequest(BaseModel):
     video_url: str = Field(..., description="اسم ملف الفيديو الأصلي (كما يُرجعه /download)")
     audio_url: str = Field(..., description="اسم ملف الصوت المُولَّد (كما يُرجعه /api/tts)")
     original_gain: float = Field(0.08, ge=0.0, le=1.0, description="مستوى صوت الفيديو الأصلي بعد الدمج")
     dub_gain: float = Field(1.0, ge=0.0, le=2.0, description="مستوى صوت الدبلجة (TTS) بعد الدمج")
+
+
+class DubTimelineSegment(BaseModel):
+    """مقطع دبلجة واحد بتوقيته الزمني الدقيق كما ضبطه المستخدم في محرر الخط الزمني."""
+
+    start: float = Field(..., ge=0.0, description="بداية المقطع بالثواني على الفيديو الأصلي")
+    end: float = Field(..., gt=0.0, description="نهاية المقطع بالثواني على الفيديو الأصلي")
+    audio_url: str = Field(..., description="اسم ملف صوت هذا المقطع (كما يُرجعه /api/tts)")
+    gain: float = Field(100.0, ge=0.0, le=300.0, description="نسبة مستوى صوت هذا المقطع (100 = بدون تغيير)")
+
+    @model_validator(mode="after")
+    def _check_range(self):
+        if self.end <= self.start:
+            raise ValueError("نهاية المقطع يجب أن تكون بعد بدايته.")
+        return self
+
+
+class DubTimelineRequest(BaseModel):
+    """طلب الدمج النهائي الاحترافي: عدة مقاطع صوتية متزامنة زمنياً مع الفيديو الأصلي."""
+
+    video_url: str = Field(..., description="اسم ملف الفيديو الأصلي (كما يُرجعه /download)")
+    segments: list[DubTimelineSegment] = Field(..., min_length=1)
+    original_gain: float = Field(0.08, ge=0.0, le=1.0, description="مستوى صوت الفيديو الأصلي في الخلفية")
+    max_speed_factor: float = Field(
+        2.0, ge=1.0, le=4.0,
+        description="أقصى نسبة تسريع/تبطيء مسموحة لمطابقة مدة كل مقطع مع فراغه الزمني",
+    )
 
 
 # ============================================================
@@ -457,7 +668,6 @@ def download_video_sync(url: str, format_id: str, job_id: str):
     if not os.path.exists(raw_filename):
         raise RuntimeError("تم تحميل الفيديو ولكن الملف الناتج غير موجود.")
 
-    # إعادة تسمية الملف إلى اسم نظيف وآمن بدقة
     dirname, original_name = os.path.split(raw_filename)
     clean_name = sanitize_filename(original_name)
     final_path = os.path.join(dirname, clean_name)
@@ -514,6 +724,7 @@ def extract_audio_sync(video_path: str, audio_path: str, job_id: str):
     )
     set_job_process(job_id, proc)
 
+    stderr = ""
     try:
         while True:
             if is_job_cancelled(job_id):
@@ -529,7 +740,7 @@ def extract_audio_sync(video_path: str, audio_path: str, job_id: str):
         set_job_process(job_id, None)
 
     if proc.returncode != 0:
-        logger.error("فشل FFmpeg (job %s): %s", job_id, stderr[-3000:])
+        logger.error("فشل FFmpeg (job %s): %s", job_id, (stderr or "")[-3000:])
         raise RuntimeError("فشل استخراج الصوت من الفيديو.")
 
     if not os.path.isfile(audio_path):
@@ -550,7 +761,7 @@ def extract_audio_sync(video_path: str, audio_path: str, job_id: str):
 # Helper: Speech Recognition (Whisper)
 # ============================================================
 
-def recognize_audio_sync(audio_path: str, job_id: str) -> tuple[str, str]:
+def recognize_audio_sync(audio_path: str, job_id: str) -> tuple[str, str, list[dict[str, Any]]]:
     update_job(
         job_id,
         status_value="processing",
@@ -571,6 +782,7 @@ def recognize_audio_sync(audio_path: str, job_id: str) -> tuple[str, str]:
     segments, info = model.transcribe(audio_path, beam_size=5, vad_filter=True)
 
     text_chunks: list[str] = []
+    formatted_segments: list[dict[str, Any]] = []
 
     for segment in segments:
         if is_job_cancelled(job_id):
@@ -578,8 +790,16 @@ def recognize_audio_sync(audio_path: str, job_id: str) -> tuple[str, str]:
 
         text_chunks.append(segment.text)
 
+        # التوقيتات الحقيقية المبنية على الكلام الفعلي — هي مصدر الحقيقة للخط الزمني
+        formatted_segments.append({
+            "id": uuid.uuid4().hex[:8],
+            "start": round(segment.start, 2),
+            "end": round(segment.end, 2),
+            "text": segment.text.strip(),
+        })
+
         percent_done = min(segment.end / duration, 1.0)
-        progress = 65 + int(percent_done * 30)
+        progress = 65 + int(percent_done * 28)
 
         update_job(
             job_id,
@@ -594,11 +814,11 @@ def recognize_audio_sync(audio_path: str, job_id: str) -> tuple[str, str]:
     update_job(
         job_id,
         status_value="processing",
-        progress=95,
+        progress=93,
         message="اكتمل التعرف على الكلام.",
     )
 
-    return text_result, detected_language
+    return text_result, detected_language, formatted_segments
 
 
 # ============================================================
@@ -659,7 +879,7 @@ def _split_into_chunks(text: str, chunk_size: int) -> list[str]:
         return [text]
 
     if " " not in text.strip():
-        return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+        return [text[i: i + chunk_size] for i in range(0, len(text), chunk_size)]
 
     chunks = []
     current = ""
@@ -691,8 +911,45 @@ def translate_text_sync(text: str, source_lang: str, target_lang: str) -> str:
     return " ".join(translated_chunks)
 
 
+def translate_segments_sync(
+    segments: list[TranslateSegmentItem], source_lang: str, target_lang: str
+) -> list[dict[str, Any]]:
+    """
+    [إصلاح #2] ترجمة كل مقطع على حدة مع الحفاظ على توقيته الحقيقي من Whisper.
+    تحميل حزمة اللغة يتم مرة واحدة فقط خارج الحلقة.
+    """
+    ensure_argos_language_pair(source_lang, target_lang)
+
+    out: list[dict[str, Any]] = []
+
+    for seg in segments:
+        text = (seg.text or "").strip()
+        if not text:
+            continue
+
+        if seg.end <= seg.start:
+            continue
+
+        try:
+            translated = argostranslate.translate.translate(text, source_lang, target_lang)
+        except Exception:
+            logger.exception("فشلت ترجمة مقطع، سيتم استخدام النص الأصلي.")
+            translated = text
+
+        out.append(
+            {
+                "start": round(float(seg.start), 2),
+                "end": round(float(seg.end), 2),
+                "original_text": text,
+                "text": (translated or text).strip(),
+            }
+        )
+
+    return out
+
+
 # ============================================================
-# Helper: Dub (دمج صوت TTS على فيديو أصلي)
+# Helper: Dub (دمج صوت TTS واحد على فيديو أصلي - الوضع البسيط القديم)
 # ============================================================
 
 def _resolve_media_path(filename_or_path: str) -> str:
@@ -717,19 +974,18 @@ def _resolve_media_path(filename_or_path: str) -> str:
 def dub_video_sync(
     video_path: str, audio_path: str, original_gain: float, dub_gain: float
 ) -> str:
-    """
-    دمج صوت TTS مع الفيديو مع تنظيف اسم الملف النهائي لتفادي مشاكل 404
-    """
     raw_base = os.path.basename(video_path)
     clean_base = sanitize_filename(os.path.splitext(raw_base)[0])
-    
+
     output_filename = f"{clean_base}_dubbed_{uuid.uuid4().hex[:8]}.mp4"
     output_path = os.path.join(MEDIA_DIR, output_filename)
 
+    # normalize=0 ضروري هنا أيضاً حتى لا يُقسّم amix كل مدخل على عدد المدخلات
     filter_complex = (
         f"[0:a]volume={original_gain}[a0];"
         f"[1:a]volume={dub_gain}[a1];"
-        f"[a0][a1]amix=inputs=2:duration=longest:dropout_transition=0[aout]"
+        f"[a0][a1]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[amixed];"
+        f"[amixed]alimiter=limit=0.95[aout]"
     )
 
     command = [
@@ -779,6 +1035,166 @@ def dub_video_sync(
 
     if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
         raise RuntimeError("لم يتم إنشاء ملف الفيديو المدمج.")
+
+    return output_filename
+
+
+# ============================================================
+# Helper: Dub Timeline (دمج احترافي متعدد المقاطع، متزامن زمنياً)
+# ============================================================
+
+_PROGRESS_TIME_RE = re.compile(r"out_time_ms=(\d+)")
+_PROGRESS_TIME_ALT_RE = re.compile(r"out_time=(\d+):(\d+):(\d+(?:\.\d+)?)")
+
+
+def dub_timeline_video_sync(
+    video_path: str,
+    segments: list[dict[str, Any]],
+    original_gain: float,
+    max_speed_factor: float,
+    job_id: str,
+) -> str:
+    """
+    يبني فيديو مدبلج نهائي من عدة مقاطع صوتية، كل واحد له توقيت بداية/نهاية مستقل
+    (كما ضبطه المستخدم يدوياً في محرر الخط الزمني).
+    """
+    update_job(
+        job_id,
+        status_value="processing",
+        progress=2,
+        message="جاري تحليل توقيت المقاطع...",
+    )
+
+    raw_base = os.path.basename(video_path)
+    clean_base = sanitize_filename(os.path.splitext(raw_base)[0])
+    output_filename = f"{clean_base}_dubbed_timeline_{uuid.uuid4().hex[:8]}.mp4"
+    output_path = os.path.join(MEDIA_DIR, output_filename)
+
+    video_duration = get_media_duration_seconds(video_path) or max(
+        seg["end"] for seg in segments
+    )
+    total_duration = max(video_duration, max(seg["end"] for seg in segments)) or 1.0
+
+    filter_parts = [f"[0:a]volume={original_gain}[a0]"]
+    mix_labels = ["[a0]"]
+    inputs: list[str] = []
+
+    for index, seg in enumerate(segments, start=1):
+        inputs += ["-i", seg["audio_path"]]
+
+        target_duration = max(0.05, seg["end"] - seg["start"])
+        actual_duration = get_media_duration_seconds(seg["audio_path"]) or target_duration
+        speed_factor = actual_duration / target_duration if target_duration > 0 else 1.0
+        speed_factor = max(1.0 / max_speed_factor, min(speed_factor, max_speed_factor))
+
+        atempo_chain = ",".join(build_atempo_filters(speed_factor))
+        delay_ms = max(0, int(round(seg["start"] * 1000)))
+        gain_ratio = max(0.0, seg.get("gain", 100.0) / 100.0)
+
+        label = f"a{index}"
+        filter_parts.append(
+            f"[{index}:a]{atempo_chain},volume={gain_ratio},"
+            f"adelay=delays={delay_ms}|{delay_ms}:all=1[{label}]"
+        )
+        mix_labels.append(f"[{label}]")
+
+    # ============================================================
+    # [إصلاح #1] amix يستخدم normalize=1 افتراضياً، أي يقسّم كل مدخل على
+    # عدد المدخلات. مع 12 جملة كان صوت الدبلجة ينزل إلى ~7% من مستواه
+    # وتضيع كل قيم gain التي يضبطها المستخدم. normalize=0 يحفظ المستويات،
+    # و alimiter يمنع الـ clipping عند تداخل مقطعين.
+    # ============================================================
+    filter_parts.append(
+        "".join(mix_labels)
+        + f"amix=inputs={len(mix_labels)}:duration=longest"
+          ":dropout_transition=0:normalize=0[amixed]"
+    )
+    filter_parts.append("[amixed]alimiter=limit=0.95[aout]")
+
+    filter_complex = ";".join(filter_parts)
+
+    command = [
+        FFMPEG_PATH, "-y",
+        "-i", video_path,
+        *inputs,
+        "-filter_complex", filter_complex,
+        "-map", "0:v",
+        "-map", "[aout]",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        # [إصلاح #3] يمنع خروج ذيل صوتي بلا صورة إذا امتد آخر مقطع بعد نهاية الفيديو
+        "-shortest",
+        "-progress", "pipe:1",
+        "-nostats",
+        output_path,
+    ]
+
+    update_job(
+        job_id,
+        status_value="processing",
+        progress=8,
+        message="جاري تجميع ودمج المقاطع الصوتية مع الفيديو...",
+    )
+
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    set_job_process(job_id, proc)
+
+    output_lines: list[str] = []
+    try:
+        for line in iter(proc.stdout.readline, ""):
+            output_lines.append(line)
+            if len(output_lines) > 500:
+                output_lines.pop(0)
+
+            if is_job_cancelled(job_id):
+                proc.kill()
+                proc.wait(timeout=5)
+                raise JobCancelledError("تم إلغاء مهمة الدمج النهائي.")
+
+            current_seconds = None
+            match_ms = _PROGRESS_TIME_RE.search(line)
+            if match_ms:
+                current_seconds = int(match_ms.group(1)) / 1_000_000
+            else:
+                match_alt = _PROGRESS_TIME_ALT_RE.search(line)
+                if match_alt:
+                    h, m, s = match_alt.groups()
+                    current_seconds = int(h) * 3600 + int(m) * 60 + float(s)
+
+            if current_seconds is not None and total_duration > 0:
+                percent = min(0.95, current_seconds / total_duration)
+                update_job(
+                    job_id,
+                    status_value="processing",
+                    progress=8 + int(percent * 87),
+                    message=f"جاري الدمج... ({int(percent * 100)}%)",
+                )
+
+        proc.wait(timeout=60)
+        stderr_output = "".join(output_lines)
+    finally:
+        set_job_process(job_id, None)
+
+    if proc.returncode != 0:
+        logger.error("فشل دمج الخط الزمني (job %s): %s", job_id, stderr_output[-3000:])
+        raise RuntimeError("فشل دمج المقاطع مع الفيديو. تحقق من صيغ ملفات الصوت المُدخلة.")
+
+    if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
+        raise RuntimeError("لم يتم إنشاء ملف الفيديو المدمج.")
+
+    update_job(
+        job_id,
+        status_value="processing",
+        progress=97,
+        message="اكتمل الدمج، جاري إنهاء المهمة...",
+    )
 
     return output_filename
 
@@ -853,23 +1269,38 @@ async def run_transcription_job(job_id: str, video_path: str):
             message="جاري تجهيز مهمة تحويل الصوت إلى نص...",
         )
 
-        video_filename = os.path.basename(video_path)
         audio_filename = f"audio_{job_id[:8]}.wav"
         audio_path = os.path.join(MEDIA_DIR, audio_filename)
 
         async with TRANSCRIBE_SEMAPHORE:
             await asyncio.to_thread(extract_audio_sync, video_path, audio_path, job_id)
 
-            text_result, detected_language = await asyncio.to_thread(
+            text_result, detected_language, segments = await asyncio.to_thread(
                 recognize_audio_sync, audio_path, job_id
             )
+
+            # حساب موجة الصوت هنا بينما ملف الـ WAV ما زال موجوداً
+            update_job(
+                job_id,
+                status_value="processing",
+                progress=95,
+                message="جاري تجهيز موجة الصوت للعرض...",
+            )
+            peaks = await asyncio.to_thread(compute_wav_peaks, audio_path)
+            audio_duration = await asyncio.to_thread(get_wav_duration_seconds, audio_path)
 
         update_job(
             job_id,
             status_value="completed",
             progress=100,
             message="اكتملت عملية تحويل الفيديو إلى نص.",
-            result={"transcription": text_result, "language": detected_language},
+            result={
+                "transcription": text_result,
+                "language": detected_language,
+                "segments": segments,
+                "peaks": peaks,
+                "audio_duration": round(audio_duration, 3),
+            },
         )
 
     except asyncio.CancelledError:
@@ -1014,6 +1445,7 @@ async def run_tts_job(job_id: str, text: str, voice: str, rate: str, pitch: str)
                 "audio_url": f"/media/{output_filename}",
                 "filename": output_filename,
                 "voice": voice,
+                "duration": round(get_media_duration_seconds(output_path), 3),
             },
         )
 
@@ -1046,16 +1478,78 @@ async def run_tts_job(job_id: str, text: str, voice: str, rate: str, pitch: str)
 
 
 # ============================================================
+# Background Job: Dub Timeline
+# ============================================================
+
+async def run_dub_timeline_job(
+    job_id: str,
+    video_path: str,
+    segments: list[dict[str, Any]],
+    original_gain: float,
+    max_speed_factor: float,
+):
+    try:
+        update_job(
+            job_id,
+            status_value="processing",
+            progress=0,
+            message="جاري تجهيز مهمة الدمج النهائي...",
+        )
+
+        async with DUB_TIMELINE_SEMAPHORE:
+            output_filename = await asyncio.to_thread(
+                dub_timeline_video_sync,
+                video_path,
+                segments,
+                original_gain,
+                max_speed_factor,
+                job_id,
+            )
+
+        update_job(
+            job_id,
+            status_value="completed",
+            progress=100,
+            message="اكتمل الدمج النهائي للدبلجة بنجاح.",
+            result={
+                "video_url": f"/media/{output_filename}",
+                "filename": output_filename,
+            },
+        )
+
+    except asyncio.CancelledError:
+        update_job(
+            job_id,
+            status_value="cancelled",
+            progress=0,
+            message="تم إلغاء مهمة الدمج النهائي.",
+        )
+        raise
+
+    except JobCancelledError:
+        update_job(
+            job_id,
+            status_value="cancelled",
+            progress=0,
+            message="تم إلغاء مهمة الدمج النهائي.",
+        )
+
+    except Exception as e:
+        logger.exception("فشل dub-timeline job %s", job_id)
+        update_job(
+            job_id,
+            status_value="failed",
+            message="فشل الدمج النهائي.",
+            error=str(e) if isinstance(e, RuntimeError) else "حدث خطأ أثناء الدمج. الرجاء المحاولة لاحقًا.",
+        )
+
+
+# ============================================================
 # Routers
 # ============================================================
 
 router = APIRouter()
 tts_router = APIRouter()
-
-
-@router.on_event("startup")
-async def _start_cleanup_task():
-    asyncio.create_task(cleanup_loop())
 
 
 @router.post("/info", summary="جلب معلومات الفيديو والجودات المتاحة")
@@ -1218,18 +1712,7 @@ async def download_video(body: DownloadRequest):
     summary="إنشاء Job لتحويل الفيديو إلى نص",
 )
 async def transcribe_video_audio(body: TranscribeRequest):
-    video_filename = os.path.basename(body.video_url.strip())
-
-    if not video_filename:
-        raise HTTPException(status_code=400, detail="اسم ملف الفيديو مطلوب.")
-
-    video_path = os.path.join(MEDIA_DIR, video_filename)
-
-    if not os.path.abspath(video_path).startswith(os.path.abspath(MEDIA_DIR)):
-        raise HTTPException(status_code=400, detail="مسار ملف غير صالح.")
-
-    if not os.path.isfile(video_path):
-        raise HTTPException(status_code=404, detail="ملف الفيديو غير موجود على السيرفر.")
+    video_path = _resolve_media_path(body.video_url)
 
     job_id = create_job("transcription")
 
@@ -1302,7 +1785,7 @@ async def cancel_job(job_id: str):
     return {"status": "cancelled", "job_id": job_id, "message": "تم إلغاء المهمة."}
 
 
-@router.post("/translate", summary="ترجمة نص مفرّغ")
+@router.post("/translate", summary="ترجمة نص مفرّغ كامل")
 async def translate_text(body: TranslateRequest):
     text = body.text.strip()
     source_lang = body.source_lang.strip() or "en"
@@ -1333,7 +1816,52 @@ async def translate_text(body: TranslateRequest):
         )
 
 
-@router.post("/dub", summary="دمج صوت TTS على فيديو أصلي وإرجاع رابط الفيديو المدمج")
+@router.post(
+    "/translate-segments",
+    summary="ترجمة مقاطع Whisper مع الحفاظ على توقيتها الحقيقي",
+)
+async def translate_segments(body: TranslateSegmentsRequest):
+    """
+    [إصلاح #2] هذه النقطة هي أساس دقة التزامن: بدل أن تخمّن الواجهة توقيت كل جملة
+    بالتناسب مع عدد أحرفها، نُرجع لها الجمل مترجمة وكل واحدة محتفظة بتوقيت
+    Whisper الأصلي المبني على الكلام الفعلي.
+    """
+    if len(body.segments) > MAX_TRANSLATE_SEGMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"عدد المقاطع كبير جدًا (الحد الأقصى {MAX_TRANSLATE_SEGMENTS} مقطع).",
+        )
+
+    source_lang = body.source_lang.strip() or "en"
+    target_lang = body.target_lang.strip() or "ar"
+
+    try:
+        segments = await asyncio.to_thread(
+            translate_segments_sync, body.segments, source_lang, target_lang
+        )
+
+        if not segments:
+            raise HTTPException(status_code=400, detail="لا توجد مقاطع نصية صالحة للترجمة.")
+
+        return {
+            "status": "success",
+            "segments": segments,
+            "source_lang": source_lang,
+            "target_lang": target_lang,
+        }
+
+    except HTTPException:
+        raise
+
+    except ValueError:
+        raise HTTPException(status_code=400, detail="رمز اللغة المدخل غير صالح.")
+
+    except Exception:
+        logger.exception("فشلت ترجمة المقاطع")
+        raise HTTPException(status_code=400, detail="فشلت ترجمة المقاطع الزمنية.")
+
+
+@router.post("/dub", summary="دمج صوت TTS واحد على فيديو أصلي (الوضع البسيط)")
 async def dub_video(body: DubRequest):
     video_path = _resolve_media_path(body.video_url)
     audio_path = _resolve_media_path(body.audio_url)
@@ -1355,6 +1883,55 @@ async def dub_video(body: DubRequest):
         "status": "success",
         "video_url": f"/media/{output_filename}",
         "filename": output_filename,
+    }
+
+
+@router.post(
+    "/dub-timeline",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="إنشاء Job لدمج دبلجة احترافية متعددة المقاطع، متزامنة زمنياً مع الفيديو الأصلي",
+)
+async def dub_timeline(body: DubTimelineRequest):
+    if len(body.segments) > MAX_DUB_TIMELINE_SEGMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"عدد المقاطع كبير جدًا (الحد الأقصى {MAX_DUB_TIMELINE_SEGMENTS} مقطع).",
+        )
+
+    video_path = _resolve_media_path(body.video_url)
+
+    resolved_segments: list[dict[str, Any]] = []
+    for seg in body.segments:
+        audio_path = _resolve_media_path(seg.audio_url)
+        resolved_segments.append(
+            {
+                "start": seg.start,
+                "end": seg.end,
+                "gain": seg.gain,
+                "audio_path": audio_path,
+            }
+        )
+
+    resolved_segments.sort(key=lambda s: s["start"])
+
+    job_id = create_job("dub_timeline")
+
+    task = asyncio.create_task(
+        run_dub_timeline_job(
+            job_id, video_path, resolved_segments, body.original_gain, body.max_speed_factor
+        )
+    )
+
+    with JOBS_LOCK:
+        if job_id in JOBS:
+            JOBS[job_id]["task"] = task
+
+    return {
+        "status": "queued",
+        "job_id": job_id,
+        "progress": 0,
+        "message": "تم إنشاء مهمة الدمج النهائي.",
+        "status_url": f"/api/video/jobs/{job_id}",
     }
 
 
