@@ -9,11 +9,24 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "aiosqlite>=0.22.1",
+    "argostranslate>=1.11.0",
+    "asyncpg>=0.31.0",
+    "ctranslate2>=4.8.2",
+    "edge-tts>=6.1.0",
     "fastapi[standard]>=0.141.1",
+    "faster-whisper>=1.2.1",
     "greenlet>=3.5.5",
+    "imageio-ffmpeg>=0.6.0",
+    "openai-whisper>=20250625",
+    "psycopg>=3.3.5",
     "pydantic>=2.13.5",
+    "sentencepiece>=0.2.2",
+    "speechrecognition>=3.17.0",
     "sqlalchemy>=2.0.52",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
     "uvicorn>=0.52.4",
+    "yt-dlp>=2026.8.19",
 ]
 
 [project.scripts]

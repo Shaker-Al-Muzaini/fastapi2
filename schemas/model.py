@@ -1,13 +1,14 @@
 from __future__ import annotations
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+# قمنا بحذف استيراد uuid و Uuid لأنهما لم يعودا مطلوبين
+from sqlalchemy import DateTime, ForeignKey, String, Text, Integer 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-# تأكد من أن هذا المسار يطابق مكان ملف الـ database.py لديك
-from schemas.database import Base 
+from .database import Base 
 
 class User(Base):
     __tablename__ = "users"
 
+    # التعديل: تحويل المعرف إلى رقمي (Integer) يتزايد تلقائياً من 1
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
@@ -26,12 +27,14 @@ class User(Base):
 class Post(Base):
     __tablename__ = "posts"
 
+    # التعديل: تحويل معرف المنشور أيضاً إلى رقمي يتزايد تلقائياً
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(100), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # التعديل: تغيير المفتاح الخارجي (ForeignKey) ليتطابق مع نوع الرقم الخاص بالمستخدم (int)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     
-    # تم تعديل استخدام datetime.now ليتوافق مع المناطق الزمنية الحديثة بدلاً من UTC الملغية في بايثون 3.12+
     date_posted: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

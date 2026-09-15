@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8" />
+    <title>معاينة الفيديو المدمج</title>
+    <style> 
+        body {
+            background: #111828;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .card {
+            width: min(90vw, 960px);
+            background: #1f2937;
+            border-radius: 18px;
+            padding: 24px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+        }
+        h2 {
+            margin: 0 0 18px;
+            text-align: center;
+        }
+        video {
+            width: 100%;
+            border-radius: 12px;
+            background: #000;
+            display: block;
+        }
+        .status {
+            background: #14532d;
+            color: #dcfce7;
+            border: 1px solid #166534;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 16px;
+            font-weight: bold;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="status">✅ تم دمج الصوت على الفيديو بنجاح</div>
+        <h2>معاينة الفيديو المدمج النهائي</h2>
+        <video controls autoplay muted>
+            <source src="/media/test_result_dub_generated.mp4" type="video/mp4">
+        </video>
+    </div>
+</body>
+</html>

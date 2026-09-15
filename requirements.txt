@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+pydantic
+
+yt-dlp
+imageio-ffmpeg
+
+# تحويل الكلام إلى نص (محلي، يدعم العربية بدقة عالية، ويكتشف اللغة تلقائيًا)
+faster-whisper
+ctranslate2
+
+# ترجمة النص (تُستخدم فقط عند الضغط على زر "ترجمة إلى العربية")
+deep-translator

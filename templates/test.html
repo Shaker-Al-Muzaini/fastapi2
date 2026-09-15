@@ -1,0 +1,601 @@
+{% extends "layout.html" %} 
+
+{% block content %}
+<div style="max-width: 700px; margin: 40px auto; padding: 25px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; text-align: right; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+    <h1 style="text-align: center; color: #ff0000; font-size: 28px; margin-bottom: 5px;">🎥 محمل فيديوهات يوتيوب الاحترافي</h1>
+    <p style="text-align: center; color: #666; margin-bottom: 30px;">قم بلصق رابط الفيديو، اختر الجودة، وابدأ التحميل مباشرة</p>
+
+    <!-- خطوة 1: إدخال الرابط -->
+    <div id="url-section" style="margin-bottom: 20px;">
+        <label for="video-url" style="font-weight: bold; display: block; margin-bottom: 8px; color: #333;">رابط فيديو يوتيوب:</label>
+        <div style="display: flex; gap: 10px;">
+            <input type="url" id="video-url" style="flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 16px; transition: border-color 0.3s;" placeholder="https://youtube.com...">
+            <button id="fetch-btn" style="padding: 12px 24px; background-color: #ff0000; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: background 0.3s;">فحص الفيديو 🔍</button>
+        </div>
+    </div>
+
+    <!-- خطوة 2: لوحة عرض تفاصيل الفيديو والخيارات (مخفية افتراضياً) -->
+    <div id="video-details" style="display: none; margin-top: 25px; padding-top: 20px; border-top: 2px solid #f0f0f0;">
+        <div style="display: flex; gap: 15px; margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 8px; flex-wrap: wrap;">
+            <img id="video-thumb" src="" alt="Thumbnail" style="width: 180px; height: auto; border-radius: 6px; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="flex: 1; min-width: 200px;">
+                <h3 id="video-title" style="margin: 0 0 10px 0; color: #222; font-size: 18px; line-height: 1.4;"></h3>
+                <p style="margin: 0; color: #777;">⏱️ المدة: <span id="video-duration"></span></p>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <label for="format-select" style="font-weight: bold; display: block; margin-bottom: 8px; color: #333;">اختر دقة وصيغة التحميل المتاحة:</label>
+            <select id="format-select" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e0e0e0; font-size: 16px; background: white;"></select>
+        </div>
+
+        <button id="download-btn" style="width: 100%; padding: 14px; background-color: #007bff; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: background 0.3s;">بدء التحميل والتحضير والتنزيل 🚀</button>
+
+        <!-- شريط تقدم التحميل -->
+        <div id="download-progress-wrap" style="display: none; margin-top: 12px; background: #eee; border-radius: 8px; overflow: hidden; height: 22px;">
+            <div id="download-progress-bar" style="height: 100%; width: 0%; background: #007bff; color: white; font-size: 12px; line-height: 22px; text-align: center; transition: width 0.3s;">0%</div>
+        </div>
+        <p id="download-progress-message" style="display: none; margin-top: 8px; color: #555; font-size: 14px; text-align: center;"></p>
+    </div>
+
+    <!-- خطوة 3: إشعار اكتمال التحميل ورابط التنزيل للمتصفح وأدوات النصوص -->
+    <div id="success-section" style="display: none; margin-top: 25px; padding: 20px; background-color: #d4edda; border-right: 5px solid #28a745; border-radius: 8px;">
+        <h4 style="color: #155724; margin: 0 0 10px 0; font-size: 18px; text-align: center;">✨ جاهز للتحميل النهائي!</h4>
+        <p style="color: #155724; margin-bottom: 15px; text-align: center;">تم معالجة الفيديو بنجاح على الخادم الخاص بك.</p>
+        
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px;">
+            <a id="final-download-link" href="" download style="padding: 12px 25px; background-color: #28a745; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; box-shadow: 0 4px 10px rgba(40,167,69,0.3);">تنزيل ملف الفيديو 💾</a>
+            <button id="transcribe-btn" style="padding: 12px 25px; background-color: #6f42c1; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(111,66,193,0.3);">تفريغ نص الفيديو الصوتي 📝</button>
+        </div>
+
+        <!-- شريط تقدم تفريغ النص -->
+        <div id="transcribe-progress-wrap" style="display: none; margin-bottom: 15px; background: #eee; border-radius: 8px; overflow: hidden; height: 22px;">
+            <div id="transcribe-progress-bar" style="height: 100%; width: 0%; background: #6f42c1; color: white; font-size: 12px; line-height: 22px; text-align: center; transition: width 0.3s;">0%</div>
+        </div>
+        <p id="transcribe-progress-message" style="display: none; margin-bottom: 15px; color: #555; font-size: 14px; text-align: center;"></p>
+
+        <!-- صندوق عرض تفريغ الكلمات -->
+        <div id="transcribe-container" style="display: none; background: white; padding: 15px; border-radius: 6px; border: 1px solid #c3e6cb; margin-top: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-weight: bold; color: #6f42c1;">النص الصوتي المستخرج (<span id="detected-language-label">-</span>):</label>
+                <button id="translate-btn" style="display: none; padding: 6px 14px; background-color: #17a2b8; color: white; border: none; border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;">ترجمة إلى العربية 🌐</button>
+            </div>
+            <div id="transcribe-output" style="font-size: 15px; color: #333; line-height: 1.6; white-space: pre-wrap; direction: auto; text-align: right; background: #fafafa; padding: 10px; border-radius: 4px; max-height: 250px; overflow-y: auto;"></div>
+
+            <!-- صندوق عرض النص المترجم (يظهر فقط بعد الضغط على زر الترجمة) -->
+            <div id="translate-container" style="display: none; margin-top: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <label style="font-weight: bold; color: #17a2b8; margin: 0;">النص مترجمًا للعربية:</label>
+                    <button id="refresh-translate-btn" style="padding: 6px 12px; background-color: #28a745; color: white; border: none; border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;">تحديث الترجمة 🔄</button>
+                </div>
+                <textarea id="translate-output" rows="8" style="width: 100%; resize: vertical; font-size: 15px; color: #333; line-height: 1.6; direction: rtl; text-align: right; background: #f0fbfc; padding: 10px; border-radius: 4px; max-height: 250px; overflow-y: auto; border: 1px solid #bee5eb; box-sizing: border-box; font-family: inherit;"></textarea>
+
+                <!-- ============================================================ -->
+                <!-- قسم جديد: تحويل النص العربي إلى صوت احترافي (رجل/امرأة)      -->
+                <!-- يستخدم أصوات Microsoft Edge Neural المجانية عالية الجودة     -->
+                <!-- ============================================================ -->
+                <div id="tts-section" style="margin-top: 15px; padding: 15px; background: #fff8e6; border: 1px solid #f0d78c; border-radius: 6px;">
+                    <label style="font-weight: bold; display: block; margin-bottom: 10px; color: #8a6d1f;">🎙️ تحويل النص العربي إلى صوت احترافي:</label>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+                        <select id="tts-dialect" style="flex: 1; min-width: 140px; padding: 10px; border-radius: 6px; border: 1px solid #e0c060; background: white;"></select>
+
+                        <select id="tts-gender" style="flex: 1; min-width: 120px; padding: 10px; border-radius: 6px; border: 1px solid #e0c060; background: white;">
+                            <option value="female">صوت أنثى 👩</option>
+                            <option value="male">صوت رجل 👨</option>
+                        </select>
+
+                        <button id="tts-btn" style="padding: 10px 20px; background-color: #d4a017; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">تحويل إلى صوت 🔊</button>
+                    </div>
+
+                    <!-- شريط تقدم توليد الصوت -->
+                    <div id="tts-progress-wrap" style="display: none; margin-bottom: 10px; background: #f0e0b0; border-radius: 8px; overflow: hidden; height: 20px;">
+                        <div id="tts-progress-bar" style="height: 100%; width: 0%; background: #d4a017; color: white; font-size: 11px; line-height: 20px; text-align: center; transition: width 0.3s;">0%</div>
+                    </div>
+                    <p id="tts-progress-message" style="display: none; margin-bottom: 10px; color: #8a6d1f; font-size: 13px; text-align: center;"></p>
+
+                    <!-- مشغل الصوت الناتج -->
+                    <audio id="tts-audio-player" controls style="display: none; width: 100%; margin-top: 8px;"></audio>
+                    <a id="tts-download-link" href="" download style="display: none; margin-top: 8px; text-decoration: none; color: #8a6d1f; font-weight: bold; font-size: 14px;">⬇️ تنزيل ملف الصوت (MP3)</a>
+
+                    <div style="margin-top: 12px;">
+                        <button id="dub-btn" style="padding: 10px 18px; background-color: #0d6efd; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">دمج الصوت على الفيديو الأصلي 🎬</button>
+                    </div>
+
+                    <div id="dub-result-wrap" style="display: none; margin-top: 15px; padding: 12px; background: #eef6ff; border: 1px solid #bbd8ff; border-radius: 6px;">
+                        <div id="dub-success-message" style="display: none; margin-bottom: 10px; padding: 10px 12px; background: #d4edda; border: 1px solid #b8dfc7; border-radius: 6px; color: #155724; font-weight: bold; text-align: center;">✅ تم إنشاء الفيديو المدمج بنجاح، وهو جاهز للمشاهدة والتنزيل.</div>
+                        <div id="dub-error-message" style="display: none; margin-bottom: 10px; padding: 10px 12px; background: #f8d7da; border: 1px solid #f5c2c7; border-radius: 6px; color: #842029; font-weight: bold; text-align: center;">❌ فشل دمج الفيديو. الرجاء التحقق من الملف الصوتي أو الفيديو الأصلي والمحاولة مرة أخرى.</div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 8px; color: #0b4ea1;">🎬 معاينة الفيديو المدمج النهائي:</label>
+                        <video id="dub-video-player" controls style="display: none; width: 100%; border-radius: 6px; background: #000;"></video>
+                        <a id="dub-download-link" href="" download style="display: none; margin-top: 8px; text-decoration: none; color: #0b4ea1; font-weight: bold; font-size: 14px;">⬇️ تنزيل الفيديو المدمج</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const fetchBtn = document.getElementById('fetch-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const videoUrlInput = document.getElementById('video-url');
+    const videoDetails = document.getElementById('video-details');
+    const successSection = document.getElementById('success-section');
+    const transcribeBtn = document.getElementById('transcribe-btn');
+    const transcribeContainer = document.getElementById('transcribe-container');
+    const transcribeOutput = document.getElementById('transcribe-output');
+    const detectedLanguageLabel = document.getElementById('detected-language-label');
+    const translateBtn = document.getElementById('translate-btn');
+    const refreshTranslateBtn = document.getElementById('refresh-translate-btn');
+    const translateContainer = document.getElementById('translate-container');
+    const translateOutput = document.getElementById('translate-output');
+
+    const downloadProgressWrap = document.getElementById('download-progress-wrap');
+    const downloadProgressBar = document.getElementById('download-progress-bar');
+    const downloadProgressMessage = document.getElementById('download-progress-message');
+
+    const transcribeProgressWrap = document.getElementById('transcribe-progress-wrap');
+    const transcribeProgressBar = document.getElementById('transcribe-progress-bar');
+    const transcribeProgressMessage = document.getElementById('transcribe-progress-message');
+
+    // ---- عناصر قسم تحويل النص إلى صوت ----
+    const ttsSection = document.getElementById('tts-section');
+    const ttsDialectSelect = document.getElementById('tts-dialect');
+    const ttsGenderSelect = document.getElementById('tts-gender');
+    const ttsBtn = document.getElementById('tts-btn');
+    const ttsProgressWrap = document.getElementById('tts-progress-wrap');
+    const ttsProgressBar = document.getElementById('tts-progress-bar');
+    const ttsProgressMessage = document.getElementById('tts-progress-message');
+    const ttsAudioPlayer = document.getElementById('tts-audio-player');
+    const ttsDownloadLink = document.getElementById('tts-download-link');
+    const dubBtn = document.getElementById('dub-btn');
+    const dubVideoPlayer = document.getElementById('dub-video-player');
+    const dubDownloadLink = document.getElementById('dub-download-link');
+    const dubResultWrap = document.getElementById('dub-result-wrap');
+    const dubSuccessMessage = document.getElementById('dub-success-message');
+    const dubErrorMessage = document.getElementById('dub-error-message');
+
+    let currentUrl = "";
+
+    // ============================================================
+    // دالة عامة لاستطلاع (Polling) حالة أي Job حتى تكتمل أو تفشل
+    // ============================================================
+    async function pollJob(jobId, statusUrlBase, { onProgress } = {}) {
+        while (true) {
+            const res = await fetch(`${statusUrlBase}/${jobId}`);
+
+            if (!res.ok) {
+                throw new Error('تعذر الحصول على حالة المهمة من السيرفر.');
+            }
+
+            const job = await res.json();
+
+            if (onProgress) onProgress(job);
+
+            if (job.status === 'completed') {
+                return job.result;
+            }
+
+            if (job.status === 'failed') {
+                throw new Error(job.error || job.message || 'فشلت المهمة على السيرفر.');
+            }
+
+            if (job.status === 'cancelled') {
+                throw new Error('تم إلغاء المهمة.');
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+    }
+
+    // ============================================================
+    // تحميل قائمة اللهجات العربية المتاحة لملء القائمة المنسدلة
+    // ============================================================
+    async function loadTtsDialects() {
+        try {
+            const res = await fetch('/api/tts/voices');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            ttsDialectSelect.innerHTML = "";
+            data.dialects.forEach((d) => {
+                const option = document.createElement('option');
+                option.value = d.dialect;
+                option.innerText = d.dialect;
+                if (d.dialect === data.default_dialect) {
+                    option.selected = true;
+                }
+                ttsDialectSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error('تعذر تحميل قائمة اللهجات:', error);
+        }
+    }
+    loadTtsDialects();
+
+    // 1. جلب معلومات الجودة والفيديو
+    fetchBtn.addEventListener('click', async () => {
+        const url = videoUrlInput.value.trim();
+        if (!url) { alert('الرجاء إدخال رابط فيديو صحيح أولاً!'); return; }
+
+        fetchBtn.disabled = true;
+        fetchBtn.innerText = 'جاري الفحص... ⏳';
+        videoDetails.style.display = 'none';
+        successSection.style.display = 'none';
+        transcribeContainer.style.display = 'none';
+
+        try {
+            const response = await fetch('/api/video/info', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: url })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'فشل الفحص من طرف السيرفر.');
+            }
+
+            const data = await response.json();
+
+            currentUrl = url;
+            document.getElementById('video-thumb').src = data.thumbnail;
+            document.getElementById('video-title').innerText = data.title;
+            document.getElementById('video-duration').innerText = data.duration;
+
+            const formatSelect = document.getElementById('format-select');
+            formatSelect.innerHTML = "";
+
+            if (data.formats.length === 0) {
+                formatSelect.innerHTML = `<option value="">لم يتم العثور على صيغ فيديو صالحة تلقائياً</option>`;
+            } else {
+                data.formats.forEach(f => {
+                    const option = document.createElement('option');
+                    option.value = f.format_id;
+                    option.innerText = `الدقة: ${f.resolution} (${f.note}) | الحجم: ${f.size}`;
+                    formatSelect.appendChild(option);
+                });
+            }
+
+            videoDetails.style.display = 'block';
+        } catch (error) {
+            alert('خطأ: ' + error.message);
+        } finally {
+            fetchBtn.disabled = false;
+            fetchBtn.innerText = 'فحص الفيديو 🔍';
+        }
+    });
+
+    // 2. بدء مهمة التحميل على السيرفر ثم متابعتها حتى تكتمل (Job + Polling)
+    downloadBtn.addEventListener('click', async () => {
+        const formatId = document.getElementById('format-select').value;
+        if (!formatId) { alert('الرجاء اختيار جودة صالحة!'); return; }
+
+        downloadBtn.disabled = true;
+        successSection.style.display = 'none';
+        transcribeContainer.style.display = 'none';
+
+        downloadProgressWrap.style.display = 'block';
+        downloadProgressMessage.style.display = 'block';
+        downloadProgressBar.style.width = '0%';
+        downloadProgressBar.innerText = '0%';
+        downloadProgressMessage.innerText = 'جاري إنشاء مهمة التحميل...';
+
+        try {
+            const startRes = await fetch('/api/video/download', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: currentUrl, format_id: formatId })
+            });
+
+            if (!startRes.ok) {
+                const err = await startRes.json().catch(() => ({}));
+                throw new Error(err.detail || 'حدث خطأ أثناء بدء مهمة التحميل.');
+            }
+
+            const startData = await startRes.json();
+
+            const result = await pollJob(startData.job_id, '/api/video/jobs', {
+                onProgress: (job) => {
+                    downloadProgressBar.style.width = `${job.progress}%`;
+                    downloadProgressBar.innerText = `${job.progress}%`;
+                    downloadProgressMessage.innerText = job.message || 'جاري المعالجة...';
+                }
+            });
+
+            document.getElementById('final-download-link').href = result.download_url;
+            successSection.style.display = 'block';
+            successSection.scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+            alert('خطأ أثناء معالجة التحميل: ' + error.message);
+        } finally {
+            downloadBtn.disabled = false;
+            downloadProgressWrap.style.display = 'none';
+            downloadProgressMessage.style.display = 'none';
+        }
+    });
+
+    // 3. بدء مهمة تحويل الصوت إلى نص ثم متابعتها حتى تكتمل (Job + Polling)
+    transcribeBtn.addEventListener('click', async () => {
+        const videoUrl = document.getElementById('final-download-link').getAttribute('href');
+        if (!videoUrl) return;
+
+        transcribeBtn.disabled = true;
+        transcribeContainer.style.display = 'none';
+
+        transcribeProgressWrap.style.display = 'block';
+        transcribeProgressMessage.style.display = 'block';
+        transcribeProgressBar.style.width = '0%';
+        transcribeProgressBar.innerText = '0%';
+        transcribeProgressMessage.innerText = 'جاري إنشاء مهمة تحويل الصوت إلى نص...';
+
+        try {
+            const startRes = await fetch('/api/video/transcribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_url: videoUrl })
+            });
+
+            if (!startRes.ok) {
+                const err = await startRes.json().catch(() => ({}));
+                throw new Error(err.detail || 'فشلت عملية معالجة الصوت.');
+            }
+
+            const startData = await startRes.json();
+
+            const result = await pollJob(startData.job_id, '/api/video/jobs', {
+                onProgress: (job) => {
+                    transcribeProgressBar.style.width = `${job.progress}%`;
+                    transcribeProgressBar.innerText = `${job.progress}%`;
+                    transcribeProgressMessage.innerText = job.message || 'جاري المعالجة...';
+                }
+            });
+
+            const transcriptText = result.transcription || "";
+            const detectedLanguage = (result.language || 'unknown').toLowerCase();
+
+            transcribeOutput.innerText = transcriptText || "لم يتم العثور على كلمات منطوقة مفهومة في المقطع.";
+            transcribeOutput.dataset.language = detectedLanguage;
+
+            detectedLanguageLabel.innerText = detectedLanguage === 'ar' ? 'عربي' : detectedLanguage;
+
+            // إخفاء نتيجة ترجمة/صوت سابقة إن وجدت
+            translateContainer.style.display = 'none';
+            translateOutput.value = '';
+            ttsAudioPlayer.style.display = 'none';
+            ttsDownloadLink.style.display = 'none';
+
+            // إظهار زر الترجمة فقط إذا كان النص المكتشف ليس عربيًا أصلاً
+            if (transcriptText && detectedLanguage !== 'ar') {
+                translateBtn.style.display = 'inline-block';
+            } else {
+                translateBtn.style.display = 'none';
+            }
+
+            transcribeContainer.style.display = 'block';
+            transcribeContainer.scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+            alert('خطأ أثناء تحويل الصوت إلى نص: ' + error.message);
+        } finally {
+            transcribeBtn.disabled = false;
+            transcribeProgressWrap.style.display = 'none';
+            transcribeProgressMessage.style.display = 'none';
+        }
+    });
+
+    async function translateCurrentText() {
+        const textToTranslate = transcribeOutput.innerText.trim();
+        if (!textToTranslate) return;
+
+        const buttonToUse = translateBtn.disabled ? refreshTranslateBtn : translateBtn;
+        buttonToUse.disabled = true;
+        buttonToUse.innerText = 'جاري الترجمة... ⏳';
+
+        try {
+            const response = await fetch('/api/video/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: textToTranslate,
+                    source_lang: transcribeOutput.dataset.language || 'en',
+                    target_lang: 'ar'
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || 'فشلت عملية الترجمة.');
+            }
+
+            const data = await response.json();
+
+            translateOutput.value = data.translated_text || "تعذر الحصول على ترجمة.";
+            translateContainer.style.display = 'block';
+
+            // إخفاء أي نتيجة صوت سابقة عند وصول ترجمة جديدة
+            ttsAudioPlayer.style.display = 'none';
+            ttsDownloadLink.style.display = 'none';
+
+            translateContainer.scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+            alert('خطأ أثناء الترجمة: ' + error.message);
+        } finally {
+            translateBtn.disabled = false;
+            refreshTranslateBtn.disabled = false;
+            translateBtn.innerText = 'ترجمة إلى العربية 🌐';
+            refreshTranslateBtn.innerText = 'تحديث الترجمة 🔄';
+        }
+    }
+
+    // 4. ترجمة النص المفرّغ (يظهر فقط إذا لم يكن النص عربيًا أصلاً)
+    translateBtn.addEventListener('click', async () => {
+        await translateCurrentText();
+    });
+
+    refreshTranslateBtn.addEventListener('click', async () => {
+        const currentText = translateOutput.value.trim();
+        if (!currentText) {
+            alert('لا يوجد نص مترجم لتحديثه.');
+            return;
+        }
+
+        const originalSource = transcribeOutput.innerText.trim();
+        const sourceText = originalSource || currentText;
+
+        refreshTranslateBtn.disabled = true;
+        refreshTranslateBtn.innerText = 'جاري التحديث... ⏳';
+
+        try {
+            const response = await fetch('/api/video/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: sourceText,
+                    source_lang: transcribeOutput.dataset.language || 'en',
+                    target_lang: 'ar'
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || 'فشل تحديث الترجمة.');
+            }
+
+            const data = await response.json();
+            translateOutput.value = data.translated_text || "تعذر الحصول على ترجمة.";
+            ttsAudioPlayer.style.display = 'none';
+            ttsDownloadLink.style.display = 'none';
+        } catch (error) {
+            alert('خطأ أثناء تحديث الترجمة: ' + error.message);
+        } finally {
+            refreshTranslateBtn.disabled = false;
+            refreshTranslateBtn.innerText = 'تحديث الترجمة 🔄';
+        }
+    });
+
+    // ============================================================
+    // 5. تحويل النص العربي المترجم إلى صوت احترافي (رجل/امرأة)
+    //    يستخدم أصوات Microsoft Edge Neural المجانية - وليس صوت
+    //    قوقل الروبوتي الافتراضي.
+    // ============================================================
+    ttsBtn.addEventListener('click', async () => {
+        const textToSpeak = translateOutput.value.trim();
+        if (!textToSpeak) {
+            alert('لا يوجد نص عربي لتحويله إلى صوت بعد.');
+            return;
+        }
+
+        ttsBtn.disabled = true;
+        ttsAudioPlayer.style.display = 'none';
+        ttsDownloadLink.style.display = 'none';
+        dubResultWrap.style.display = 'none';
+
+        ttsProgressWrap.style.display = 'block';
+        ttsProgressMessage.style.display = 'block';
+        ttsProgressBar.style.width = '0%';
+        ttsProgressBar.innerText = '0%';
+        ttsProgressMessage.innerText = 'جاري إنشاء مهمة تحويل النص إلى صوت...';
+
+        try {
+            const startRes = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: textToSpeak,
+                    gender: ttsGenderSelect.value,
+                    dialect: ttsDialectSelect.value
+                })
+            });
+
+            if (!startRes.ok) {
+                const err = await startRes.json().catch(() => ({}));
+                throw new Error(err.detail || 'فشل إنشاء مهمة تحويل النص إلى صوت.');
+            }
+
+            const startData = await startRes.json();
+
+            const result = await pollJob(startData.job_id, '/api/tts/jobs', {
+                onProgress: (job) => {
+                    ttsProgressBar.style.width = `${job.progress}%`;
+                    ttsProgressBar.innerText = `${job.progress}%`;
+                    ttsProgressMessage.innerText = job.message || 'جاري المعالجة...';
+                }
+            });
+
+            ttsAudioPlayer.src = result.audio_url;
+            ttsAudioPlayer.style.display = 'block';
+
+            ttsDownloadLink.href = result.audio_url;
+            ttsDownloadLink.style.display = 'inline-block';
+
+            dubBtn.disabled = false;
+            ttsAudioPlayer.scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+            alert('خطأ أثناء تحويل النص إلى صوت: ' + error.message);
+        } finally {
+            ttsBtn.disabled = false;
+            ttsProgressWrap.style.display = 'none';
+            ttsProgressMessage.style.display = 'none';
+        }
+    });
+
+    dubBtn.addEventListener('click', async () => {
+        const videoHref = document.getElementById('final-download-link').getAttribute('href');
+        const audioHref = ttsAudioPlayer.getAttribute('src');
+
+        if (!videoHref || !audioHref) {
+            alert('يجب أولاً إنشاء فيديو أصلي ثم توليد الصوت المترجم.');
+            return;
+        }
+
+        const originalVideoName = decodeURIComponent(videoHref.split('/').pop() || '');
+        const translatedAudioName = decodeURIComponent(audioHref.split('/').pop() || '');
+
+        dubBtn.disabled = true;
+        dubBtn.innerText = 'جاري دمج الصوت... ⏳';
+        dubSuccessMessage.style.display = 'none';
+        dubErrorMessage.style.display = 'none';
+        dubVideoPlayer.style.display = 'none';
+        dubDownloadLink.style.display = 'none';
+
+        try {
+            const response = await fetch('/api/video/dub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    video_url: originalVideoName,
+                    audio_url: translatedAudioName,
+                    original_gain: 0.08,
+                    dub_gain: 1.0
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || 'فشل دمج الصوت على الفيديو الأصلي.');
+            }
+
+            const data = await response.json();
+            const finalVideoUrl = data.video_url;
+
+            dubVideoPlayer.src = finalVideoUrl;
+            dubVideoPlayer.style.display = 'block';
+            dubVideoPlayer.load();
+            dubDownloadLink.href = finalVideoUrl;
+            dubDownloadLink.style.display = 'inline-block';
+            dubResultWrap.style.display = 'block';
+            dubSuccessMessage.style.display = 'block';
+            dubResultWrap.scrollIntoView({ behavior: 'smooth' });
+            dubVideoPlayer.play().catch(() => {});
+        } catch (error) {
+            dubResultWrap.style.display = 'block';
+            dubErrorMessage.style.display = 'block';
+            dubErrorMessage.innerText = '❌ فشل دمج الفيديو: ' + error.message;
+            alert('خطأ أثناء دمج الصوت على الفيديو: ' + error.message);
+        } finally {
+            dubBtn.disabled = false;
+            dubBtn.innerText = 'دمج الصوت على الفيديو الأصلي 🎬';
+        }
+    });
+</script>
+{% endblock content %}
