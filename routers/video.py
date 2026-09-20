@@ -2,6 +2,7 @@ import os
 import re
 import wave
 import array
+import sys
 import json as json_lib
 import shutil
 import asyncio
@@ -65,14 +66,15 @@ PIPER_ARABIC_VOICES = {
     "إماراتي (أنثى)": {"model": "ar_AE-female-medium", "gender": "female"},
 }
 
-# ✅ [جديد] Wav2Lip Lip-Sync Configuration
-WAV2LIP_DIR = os.environ.get("WAV2LIP_DIR", "Wav2Lip")
-WAV2LIP_CHECKPOINT = os.environ.get(
-    "WAV2LIP_CHECKPOINT",
-    os.path.join(WAV2LIP_DIR, "checkpoints", "wav2lip_gan.pth"),
+# ✅ Wav2Lip-ONNX Configuration
+WAV2LIP_ONNX_DIR = os.environ.get("WAV2LIP_ONNX_DIR", r"D:\python-project\Wav2Lip-Onnx")
+WAV2LIP_ONNX_MODEL = os.environ.get(
+    "WAV2LIP_ONNX_MODEL",
+    os.path.join(WAV2LIP_ONNX_DIR, "models", "wav2lip_gan.onnx"),
 )
-WAV2LIP_PYTHON = os.environ.get("WAV2LIP_PYTHON", "python")
-WAV2LIP_TIMEOUT_SECONDS = int(os.environ.get("WAV2LIP_TIMEOUT_SECONDS", 3600))  # ساعة واحدة كحد أقصى
+WAV2LIP_ONNX_SCRIPT = os.environ.get("WAV2LIP_ONNX_SCRIPT", "inference_onnxModel.py")
+WAV2LIP_PYTHON = os.environ.get("WAV2LIP_PYTHON") or sys.executable
+WAV2LIP_TIMEOUT_SECONDS = int(os.environ.get("WAV2LIP_TIMEOUT_SECONDS", 3600))
 
 
 def sanitize_filename(filename: str) -> str:
@@ -218,22 +220,25 @@ def piper_available() -> bool:
 
 
 # ============================================================
-# ✅ [جديد] Wav2Lip Availability Check
+# ✅ Wav2Lip-ONNX Availability Check
 # ============================================================
 
 def wav2lip_available() -> tuple[bool, str]:
-    """فحص توفر Wav2Lip والنموذج على السيرفر."""
-    if not os.path.isdir(WAV2LIP_DIR):
-        return False, f"مجلد Wav2Lip غير موجود: {WAV2LIP_DIR}"
+    if not os.path.isdir(WAV2LIP_ONNX_DIR):
+        return False, f"مجلد Wav2Lip-ONNX غير موجود: {WAV2LIP_ONNX_DIR}"
 
-    inference = os.path.join(WAV2LIP_DIR, "inference.py")
-    if not os.path.isfile(inference):
-        return False, f"ملف inference.py غير موجود في: {WAV2LIP_DIR}"
+    script_path = os.path.join(WAV2LIP_ONNX_DIR, WAV2LIP_ONNX_SCRIPT)
+    if not os.path.isfile(script_path):
+        return False, f"ملف السكربت غير موجود: {script_path}"
 
-    if not os.path.isfile(WAV2LIP_CHECKPOINT):
-        return False, f"ملف النموذج غير موجود: {WAV2LIP_CHECKPOINT}"
+    if not os.path.isfile(WAV2LIP_ONNX_MODEL):
+        return False, f"ملف النموذج ONNX غير موجود: {WAV2LIP_ONNX_MODEL}"
 
-    return True, "Wav2Lip جاهز للاستخدام"
+    detector = os.path.join(WAV2LIP_ONNX_DIR, "utils", "scrfd_2.5g_bnkps.onnx")
+    if not os.path.isfile(detector):
+        return False, f"كاشف الوجه غير موجود: {detector}"
+
+    return True, f"Wav2Lip-ONNX جاهز (python: {os.path.basename(WAV2LIP_PYTHON)})"
 
 
 # ============================================================
@@ -254,7 +259,7 @@ DUB_SEMAPHORE = asyncio.Semaphore(2)
 DUB_TIMELINE_SEMAPHORE = asyncio.Semaphore(1)
 ENHANCE_SEMAPHORE = asyncio.Semaphore(2)
 REFRAME_SEMAPHORE = asyncio.Semaphore(2)
-LIPSYNC_SEMAPHORE = asyncio.Semaphore(1)   # ← ثقيل جداً، واحد فقط في الوقت الواحد
+LIPSYNC_SEMAPHORE = asyncio.Semaphore(1)
 
 
 def create_job(job_type: str) -> str:
@@ -460,6 +465,10 @@ class LayerSegment(BaseModel):
     end: float = Field(..., gt=0.0)
     audio_url: str
     gain: float = Field(100.0, ge=0.0, le=300.0)
+    tts_duration: float | None = Field(
+        None, ge=0.0,
+        description="مدة الصوت TTS الفعلية (يُمرر من الواجهة لتسريع الحساب)",
+    )
 
     @model_validator(mode="after")
     def _check_range(self):
@@ -502,7 +511,7 @@ class LayeredDubRequest(BaseModel):
     original_trim_start: float = Field(0.0, ge=0.0)
     original_trim_end: float | None = Field(None, ge=0.0)
     original_speed: float = Field(1.0, ge=0.25, le=4.0)
-    max_speed_factor: float = Field(2.0, ge=1.0, le=4.0)
+    max_speed_factor: float = Field(1.15, ge=1.0, le=2.0)
 
     @model_validator(mode="after")
     def _check_audio_source(self):
@@ -534,12 +543,12 @@ class AutoReframeRequest(BaseModel):
     focus: str = Field("center")
 
 
-# ✅ [جديد] Lipsync Request
 class LipsyncRequest(BaseModel):
-    """طلب مزامنة الشفاه باستخدام Wav2Lip مع مقاطع الدبلجة."""
     video_url: str = Field(..., description="الفيديو الأصلي")
     segments: list[LayerSegment] = Field(..., min_length=1, description="مقاطع الدبلجة الجاهزة")
-    total_duration: float | None = Field(None, ge=0.0, description="مدة الفيديو الكلية (اختياري)")
+    total_duration: float | None = Field(None, ge=0.0, description="مدة الفيديو الكلية")
+    max_speed_factor: float = Field(1.15, ge=1.0, le=2.0, description="أقصى ضغط/تمديد (افتراضي 1.15)")
+    background_volume: float = Field(0.0, ge=0.0, le=1.0, description="مستوى صوت الفيديو الأصلي كخلفية (افتراضي 0 = مكتوم)")
 
 
 # ============================================================
@@ -581,7 +590,7 @@ def create_download_progress_hook(job_id: str):
 
 
 # ============================================================
-# Helpers: Info, Download, Extract
+# Helpers
 # ============================================================
 
 def extract_video_info(url: str):
@@ -783,7 +792,35 @@ def _resolve_media_path(filename_or_path: str) -> str:
 
 
 # ============================================================
-# Dub Simple + Timeline
+# ✅ NEW: YouTube-Style Time-Stretching Normalizer
+# ============================================================
+
+def normalize_segments_to_fill_gaps(
+    segments: list[dict[str, Any]],
+    max_gap: float = 1.5,
+    min_gap: float = 0.05,
+) -> list[dict[str, Any]]:
+    """
+    يمدّ المقاطع لملء الفراغات القصيرة بين الجمل (مثل يوتيوب).
+    """
+    if not segments:
+        return segments
+    sorted_segs = sorted(segments, key=lambda s: float(s.get("start", 0.0)))
+    out = []
+    for i, seg in enumerate(sorted_segs):
+        s = dict(seg)
+        cur_end = float(s.get("end", 0.0))
+        if i + 1 < len(sorted_segs):
+            next_start = float(sorted_segs[i + 1].get("start", 0.0))
+            gap = next_start - cur_end
+            if min_gap < gap < max_gap:
+                s["end"] = round(next_start - 0.02, 3)
+        out.append(s)
+    return out
+
+
+# ============================================================
+# Dub Simple + Timeline + Layered
 # ============================================================
 
 def dub_video_sync(video_path: str, audio_path: str, original_gain: float, dub_gain: float) -> str:
@@ -895,10 +932,6 @@ def dub_timeline_video_sync(video_path, segments, original_gain, max_speed_facto
     return output_filename
 
 
-# ============================================================
-# Dub Layered — مع original_active + opacity
-# ============================================================
-
 def dub_layered_video_sync(
     video_path: str,
     layers: list[dict[str, Any]],
@@ -936,7 +969,6 @@ def dub_layered_video_sync(
     video_layer_info: list[dict] = []
     total_duration = video_duration
 
-    # ---- صوت الفيديو الأصلي ----
     if (not mute_original) and original_volume > 0 and has_audio_stream(video_path):
         afade_parts = f"[0:a]atrim=start={trim_start:.3f}:duration={trimmed_duration:.3f},asetpts=PTS-STARTPTS"
         if abs(original_speed - 1.0) > 0.01:
@@ -1164,7 +1196,7 @@ def dub_layered_video_sync(
 
 
 # ============================================================
-# Audio Enhancement
+# Enhance Audio
 # ============================================================
 
 def enhance_audio_sync(video_path: str, opts: dict[str, Any], job_id: str) -> str:
@@ -1323,77 +1355,182 @@ def auto_reframe_sync(video_path: str, target_ratio: str, mode: str, focus: str,
 
 
 # ============================================================
-# ✅ [جديد] Lip-Sync with Wav2Lip
+# ✅ Wav2Lip-ONNX Lip-Sync (طبيعية الصوت أولاً)
 # ============================================================
+
 def merge_tts_segments_to_single_audio(
     segments: list[dict[str, Any]],
     total_duration: float,
     output_path: str,
     job_id: str,
+    background_video: str | None = None,
+    background_volume: float = 0.0,
+    max_speed_factor: float = 1.20,
+    min_speed_factor: float = 0.85,
 ) -> None:
     """
-    يدمج مقاطع TTS في ملف صوتي موحّد (mono 16kHz PCM s16le).
+    ✅ خوارزمية هندسية متقدمة للمزامنة الصوتية:
+
+    لكل مقطع:
+      1. slot = (start المقطع التالي - gap) - start الحالي
+      2. tts_dur = المدة الفعلية لملف TTS
+      3. speed_needed = tts_dur / slot
+      4. speed_applied = clamp(speed_needed, min_speed, max_speed)
+      5. final_dur = tts_dur / speed_applied
+      6. إذا final_dur > slot → قص الفائض بـ atrim
+      7. إذا final_dur < slot → اترك الصمت في الباقي (لا تمدد)
+
+    النتيجة:
+      - لا تداخل بين المقاطع (slot limits)
+      - صوت طبيعي (speed في الحدود)
+      - المدة النهائية = مدة الفيديو بالضبط
     """
     if not segments:
         raise RuntimeError("لا توجد مقاطع TTS لدمجها.")
 
-    # تصفية المقاطع الصالحة
-    valid_segments: list[dict[str, Any]] = []
+    MIN_GAP = 0.05  # فاصل مضمون بين المقاطع
+
+    # ============ 1) تحضير المقاطع + حساب مدتها الفعلية ============
+    prepared: list[dict[str, Any]] = []
     for seg in segments:
         audio_path = seg.get("audio_path")
-        if audio_path and os.path.isfile(audio_path):
-            valid_segments.append(seg)
-        else:
+        if not audio_path or not os.path.isfile(audio_path):
             logger.warning("مقطع بدون ملف صوتي صالح: %s", seg)
+            continue
 
-    if not valid_segments:
+        # استخدم tts_duration إن وُجد، وإلا احسب من الملف
+        tts_dur = float(seg.get("tts_duration") or 0.0)
+        if tts_dur <= 0.01:
+            tts_dur = get_media_duration_seconds(audio_path) or 0.0
+        if tts_dur <= 0.01:
+            logger.warning("مقطع بصوت فارغ: %s", audio_path)
+            continue
+
+        prepared.append({
+            "audio_path": audio_path,
+            "start": float(seg.get("start", 0.0)),
+            "end": float(seg.get("end", 0.0)),
+            "gain": max(0.0, float(seg.get("gain", 100.0)) / 100.0),
+            "tts_duration": tts_dur,
+        })
+
+    if not prepared:
         raise RuntimeError("لا توجد ملفات صوتية صالحة على السيرفر.")
 
-    valid_segments.sort(key=lambda s: float(s.get("start", 0.0)))
+    prepared.sort(key=lambda s: s["start"])
 
-    update_job(
-        job_id,
-        status_value="processing",
-        progress=8,
-        message=f"دمج {len(valid_segments)} مقطع في مسار صوتي موحّد...",
-    )
+    # ============ 2) حساب الـ slots و atempo لكل مقطع ============
+    final_duration = max(0.1, total_duration)
+    total_speed_adjustments = 0
 
-    # ---- المدخلات ----
+    for i, seg in enumerate(prepared):
+        start = seg["start"]
+        # slot = حتى بداية المقطع التالي (مع gap)، أو نهاية الفيديو
+        if i + 1 < len(prepared):
+            slot_end = prepared[i + 1]["start"] - MIN_GAP
+        else:
+            slot_end = final_duration
+
+        slot = max(0.1, slot_end - start)
+        seg["slot"] = slot
+
+        # حساب السرعة المطلوبة
+        speed_needed = seg["tts_duration"] / slot
+        speed_applied = max(min_speed_factor, min(speed_needed, max_speed_factor))
+        final_dur = seg["tts_duration"] / speed_applied
+
+        # هل يحتاج قص؟
+        seg["speed"] = round(speed_applied, 4)
+        seg["final_duration"] = round(final_dur, 4)
+        seg["trim_to"] = round(slot, 4)
+        seg["needs_trim"] = final_dur > slot + 0.01
+
+        if abs(speed_applied - 1.0) > 0.02:
+            total_speed_adjustments += 1
+
+        logger.info(
+            "Segment %d: tts=%.2fs slot=%.2fs speed=%.2fx final=%.2fs trim=%s",
+            i, seg["tts_duration"], slot, speed_applied, final_dur, seg["needs_trim"],
+        )
+
+    # ============ 3) بناء فلتر ffmpeg ============
     inputs: list[str] = []
-    for seg in valid_segments:
+    for seg in prepared:
         inputs += ["-i", seg["audio_path"]]
 
-    # ---- الفلاتر ----
     filter_parts: list[str] = []
     mix_labels: list[str] = []
 
-    for i, seg in enumerate(valid_segments, start=1):
-        input_idx = i - 1  # ✅ ffmpeg inputs 0-based
-        delay_ms = max(0, int(round(float(seg.get("start", 0.0)) * 1000)))
-        gain = max(0.0, float(seg.get("gain", 100.0)) / 100.0)
+    for i, seg in enumerate(prepared, start=1):
+        input_idx = i - 1
+        delay_ms = max(0, int(round(seg["start"] * 1000)))
+        gain = seg["gain"]
+        speed = seg["speed"]
+        needs_trim = seg["needs_trim"]
+        trim_to = seg["trim_to"]
+
         label = f"a{i}"
 
+        # السلسلة الأساسية: resample + mono + volume
         chain = (
             f"[{input_idx}:a]"
             f"aresample=16000,"
             f"aformat=sample_fmts=s16:channel_layouts=mono,"
-            f"volume={gain:.4f},"
-            f"adelay={delay_ms}:all=1"
-            f"[{label}]"
+            f"volume={gain:.4f}"
         )
+
+        # atempo إذا احتجنا ضغط/تمديد
+        if abs(speed - 1.0) > 0.02:
+            atempo_chain = ",".join(build_atempo_filters(speed))
+            chain += f",{atempo_chain}"
+
+        # atrim إذا احتجنا قص الفائض (يمنع التداخل)
+        if needs_trim:
+            chain += f",atrim=duration={trim_to:.4f}"
+            chain += f",asetpts=PTS-STARTPTS"
+
+        # adelay لوضع المقطع في موضعه الزمني الصحيح
+        chain += f",adelay={delay_ms}:all=1[{label}]"
+
         filter_parts.append(chain)
         mix_labels.append(f"[{label}]")
 
-    # ---- دمج ----
+    # خلفية الفيديو الأصلي (معطلة افتراضياً)
+    has_background = bool(
+        background_video
+        and background_volume > 0.0
+        and os.path.isfile(background_video)
+        and has_audio_stream(background_video)
+    )
+    if has_background:
+        bg_idx = len(prepared)
+        inputs += ["-i", background_video]
+        filter_parts.append(
+            f"[{bg_idx}:a]"
+            f"aresample=16000,"
+            f"aformat=sample_fmts=s16:channel_layouts=mono,"
+            f"volume={background_volume:.4f}"
+            f"[bg]"
+        )
+        mix_labels.append("[bg]")
+
+    # دمج الكل
     if len(mix_labels) == 1:
-        filter_parts.append(f"{mix_labels[0]}anull[out]")
+        filter_parts.append(f"{mix_labels[0]}anull[mixed]")
     else:
         filter_parts.append(
             f"{''.join(mix_labels)}"
             f"amix=inputs={len(mix_labels)}:"
-            f"duration=longest:dropout_transition=0"
-            f"[out]"
+            f"duration=longest:dropout_transition=0:normalize=0"
+            f"[mixed]"
         )
+
+    # apad + atrim لضمان الطول = مدة الفيديو بالضبط
+    filter_parts.append(
+        f"[mixed]apad=whole_dur={final_duration:.3f},"
+        f"atrim=duration={final_duration:.3f},"
+        f"asetpts=PTS-STARTPTS[out]"
+    )
 
     filter_complex = ";".join(filter_parts)
 
@@ -1405,22 +1542,24 @@ def merge_tts_segments_to_single_audio(
         "-ar", "16000",
         "-ac", "1",
         "-c:a", "pcm_s16le",
-        "-t", f"{total_duration:.3f}",
         output_path,
     ]
 
-    logger.info("Merge TTS command: %s", " ".join(command))
+    update_job(
+        job_id,
+        status_value="processing",
+        progress=8,
+        message=f"دمج {len(prepared)} مقطع بمزامنة هندسية (تعديل سرعة: {total_speed_adjustments})...",
+    )
 
     try:
         result = subprocess.run(
             command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=600,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=600,
         )
     except subprocess.TimeoutExpired:
-        raise RuntimeError("انتهت مهلة دمج مقاطع TTS (600 ثانية).")
+        raise RuntimeError("انتهت مهلة دمج مقاطع TTS.")
 
     if result.returncode != 0:
         stderr_tail = (result.stderr or "")[-2000:]
@@ -1430,12 +1569,11 @@ def merge_tts_segments_to_single_audio(
     if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
         raise RuntimeError("لم يتم إنشاء الملف الصوتي المدموج.")
 
-    duration = get_media_duration_seconds(output_path) or 0.0
     update_job(
         job_id,
         status_value="processing",
         progress=15,
-        message=f"اكتمل دمج الصوت ({duration:.1f} ثانية). تشغيل Wav2Lip...",
+        message=f"اكتمل الدمج ({final_duration:.1f}s). تشغيل Wav2Lip-ONNX...",
     )
 
 
@@ -1444,31 +1582,40 @@ def lipsync_video_sync(
     segments: list[dict[str, Any]],
     total_duration: float | None,
     job_id: str,
+    max_speed_factor: float = 1.15,
+    background_volume: float = 0.0,
 ) -> str:
     """
-    يطبّق مزامنة الشفاه على الفيديو الأصلي باستخدام Wav2Lip.
-    يعتمد على مقاطع TTS لتوليد مسار صوتي موحّد أولاً.
+    ✅ مزامنة الشفاه مع أولوية لطبيعية الصوت.
+    - atempo طفيف جدًا (1.15x فقط)
+    - الفيديو يمتد ليطابق طول الصوت الطبيعي
+    - لا خلفية صوتية من الفيديو الأصلي
     """
-    update_job(job_id, status_value="processing", progress=3, message="التحقق من Wav2Lip...")
+    update_job(job_id, status_value="processing", progress=3, message="التحقق من Wav2Lip-ONNX...")
 
     available, msg = wav2lip_available()
     if not available:
-        raise RuntimeError(
-            f"Wav2Lip غير جاهز على السيرفر: {msg}. "
-            "يرجى استنساخ المستودع ووضع النموذج في مجلد checkpoints."
-        )
+        raise RuntimeError(f"Wav2Lip-ONNX غير جاهز على السيرفر: {msg}.")
 
     raw_video_duration = get_media_duration_seconds(video_path)
     if raw_video_duration <= 0:
         raise RuntimeError("لا يمكن قراءة مدة الفيديو الأصلي.")
 
-    video_duration = float(total_duration) if total_duration else raw_video_duration
-    video_duration = max(video_duration, raw_video_duration)
+    # ✅ المدة الأولية = مدة الفيديو (قد تطول لاحقًا)
+    video_duration = raw_video_duration
 
-    # 1) دمج مقاطع TTS في ملف صوتي واحد
+    # تطبيع المقاطع (يملأ الفراغات القصيرة فقط)
+    segments = normalize_segments_to_fill_gaps(segments, max_gap=1.5)
+
+    # ✅ دمج TTS فقط (بدون خلفية، atempo طفيف)
     merged_audio = os.path.join(MEDIA_DIR, f"lipsync_audio_{job_id[:8]}.wav")
     try:
-        merge_tts_segments_to_single_audio(segments, video_duration, merged_audio, job_id)
+        merge_tts_segments_to_single_audio(
+            segments, video_duration, merged_audio, job_id,
+            background_video=None,
+            background_volume=0.0,
+            max_speed_factor=max_speed_factor,
+        )
     except Exception:
         try:
             if os.path.exists(merged_audio):
@@ -1477,32 +1624,34 @@ def lipsync_video_sync(
             pass
         raise
 
-    # 2) بناء أمر Wav2Lip
+    # ✅ المدة الفعلية للصوت المدموج (قد تكون أطول من الفيديو)
+    actual_audio_duration = get_media_duration_seconds(merged_audio) or video_duration
+    logger.info("Audio duration after merge: %.2fs (video: %.2fs)", actual_audio_duration, video_duration)
+
+    # 3) تشغيل Wav2Lip-ONNX
     raw_base = os.path.basename(video_path)
     clean_base = sanitize_filename(os.path.splitext(raw_base)[0])
     output_filename = f"{clean_base}_lipsync_{uuid.uuid4().hex[:8]}.mp4"
     output_path = os.path.join(MEDIA_DIR, output_filename)
+    wav2lip_raw = os.path.join(MEDIA_DIR, f"lipsync_raw_{job_id[:8]}.mp4")
 
-    inference_script = os.path.join(WAV2LIP_DIR, "inference.py")
+    inference_script = os.path.join(WAV2LIP_ONNX_DIR, WAV2LIP_ONNX_SCRIPT)
     command = [
         WAV2LIP_PYTHON, inference_script,
-        "--checkpoint_path", os.path.abspath(WAV2LIP_CHECKPOINT),
+        "--checkpoint_path", os.path.abspath(WAV2LIP_ONNX_MODEL),
         "--face", os.path.abspath(video_path),
         "--audio", os.path.abspath(merged_audio),
-        "--outfile", os.path.abspath(output_path),
-        "--nosmooth",
+        "--outfile", os.path.abspath(wav2lip_raw),
+        "--pads", "4",
     ]
 
     update_job(job_id, status_value="processing", progress=20,
-               message="بدء معالجة Wav2Lip... (قد تستغرق عدة دقائق)")
+               message="بدء معالجة Wav2Lip-ONNX... (قد تستغرق عدة دقائق)")
 
     proc = subprocess.Popen(
         command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        cwd=WAV2LIP_DIR,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1, cwd=WAV2LIP_ONNX_DIR,
     )
     set_job_process(job_id, proc)
 
@@ -1515,37 +1664,64 @@ def lipsync_video_sync(
             output_lines.append(line)
             if len(output_lines) > 800:
                 output_lines.pop(0)
-
             if is_job_cancelled(job_id):
-                proc.kill()
-                proc.wait(timeout=10)
+                proc.kill(); proc.wait(timeout=10)
                 raise JobCancelledError("تم إلغاء مهمة مزامنة الشفاه.")
-
-            # زيادة التقدم كل سطرين (تقدير)
             progress_markers += 1
-            if progress_markers % 2 == 0 and last_progress < 90:
-                last_progress = min(90, last_progress + 1)
+            if progress_markers % 10 == 0 and last_progress < 85:
+                last_progress = min(85, last_progress + 1)
                 update_job(job_id, status_value="processing",
                            progress=last_progress,
                            message=f"جاري مزامنة الشفاه... ({last_progress}%)")
-
         proc.wait(timeout=WAV2LIP_TIMEOUT_SECONDS)
         full_output = "".join(output_lines)
     finally:
         set_job_process(job_id, None)
-        # حذف الملف الصوتي المؤقت
+
+    if proc.returncode != 0:
+        for p in (merged_audio, wav2lip_raw):
+            try:
+                if os.path.exists(p): os.remove(p)
+            except OSError:
+                pass
+        logger.error("فشل Wav2Lip-ONNX (job %s): %s", job_id, full_output[-3000:])
+        raise RuntimeError("فشل تطبيق مزامنة الشفاه. تحقق من سجلات Wav2Lip-ONNX.")
+
+    if not os.path.isfile(wav2lip_raw) or os.path.getsize(wav2lip_raw) == 0:
+        for p in (merged_audio, wav2lip_raw):
+            try:
+                if os.path.exists(p): os.remove(p)
+            except OSError:
+                pass
+        raise RuntimeError("لم يتم إنشاء ملف الفيديو المتزامن.")
+
+    # 4) إعادة ترميز H.264
+    update_job(job_id, status_value="processing", progress=88,
+               message="جاري تحويل الصيغة لضمان التوافق مع المتصفح...")
+
+    reencode_cmd = [
+        FFMPEG_PATH, "-y",
+        "-i", wav2lip_raw,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+        "-movflags", "+faststart",
+        output_path,
+    ]
+
+    reenc = subprocess.run(reencode_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    for p in (merged_audio, wav2lip_raw):
         try:
-            if os.path.exists(merged_audio):
-                os.remove(merged_audio)
+            if os.path.exists(p): os.remove(p)
         except OSError:
             pass
 
-    if proc.returncode != 0:
-        logger.error("فشل Wav2Lip (job %s): %s", job_id, full_output[-3000:])
-        raise RuntimeError("فشل تطبيق مزامنة الشفاه. تحقق من سجلات Wav2Lip.")
+    if reenc.returncode != 0:
+        logger.error("فشل إعادة الترميز: %s", (reenc.stderr or "")[-3000:])
+        raise RuntimeError("فشل تحويل الفيديو النهائي.")
 
     if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
-        raise RuntimeError("لم يتم إنشاء ملف الفيديو المتزامن.")
+        raise RuntimeError("لم يتم إنشاء ملف الفيديو النهائي.")
 
     update_job(job_id, status_value="processing", progress=97,
                message="اكتملت مزامنة الشفاه، جاري إنهاء المهمة...")
@@ -1692,14 +1868,14 @@ async def run_auto_reframe_job(job_id, video_path, target_ratio, mode, focus):
                    error=str(e) if isinstance(e, RuntimeError) else "حدث خطأ.")
 
 
-# ✅ [جديد] Lipsync background job
-async def run_lipsync_job(job_id, video_path, segments, total_duration):
+async def run_lipsync_job(job_id, video_path, segments, total_duration, max_speed_factor=1.15, background_volume=0.0):
     try:
         update_job(job_id, status_value="processing", progress=0,
                    message="تجهيز مهمة مزامنة الشفاه...")
         async with LIPSYNC_SEMAPHORE:
             output_filename = await asyncio.to_thread(
-                lipsync_video_sync, video_path, segments, total_duration, job_id
+                lipsync_video_sync, video_path, segments, total_duration, job_id,
+                max_speed_factor, background_volume,
             )
         update_job(job_id, status_value="completed", progress=100,
                    message="اكتملت مزامنة الشفاه بنجاح.",
@@ -1796,17 +1972,11 @@ async def synthesize_piper(text: str, voice_model: str, rate_val: float, output_
     if not os.path.isfile(model_path):
         raise RuntimeError(f"نموذج Piper غير موجود: {model_path}")
     length_scale = 1.0 / max(0.5, min(2.0, rate_val))
-    cmd = [
-        PIPER_BINARY,
-        "--model", model_path,
-        "--output_file", output_path,
-        "--length_scale", str(length_scale),
-    ]
+    cmd = [PIPER_BINARY, "--model", model_path, "--output_file", output_path,
+           "--length_scale", str(length_scale)]
     proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        *cmd, stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await proc.communicate(text.encode("utf-8"))
     if proc.returncode != 0:
@@ -1816,6 +1986,7 @@ async def synthesize_piper(text: str, voice_model: str, rate_val: float, output_
 
 async def run_tts_job(job_id: str, text: str, voice: str, rate: str, pitch: str,
                       engine: str = "edge", piper_voice: str = None):
+    """✅ TTS بدون time-stretch — الصوت يخرج بطبيعته."""
     output_filename = f"tts_{job_id}.mp3"
     output_path = os.path.join(MEDIA_DIR, output_filename)
     try:
@@ -1829,12 +2000,16 @@ async def run_tts_job(job_id: str, text: str, voice: str, rate: str, pitch: str,
                 await synthesize_piper(text, piper_voice, rate_val, output_path)
             else:
                 await synthesize_speech(text, voice, rate, pitch, output_path)
+
         if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
             raise RuntimeError("فشل توليد الصوت.")
+
+        duration = get_media_duration_seconds(output_path) or 0.0
+
         update_job(job_id, status_value="completed", progress=100, message="اكتمل التوليد.",
                    result={"audio_url": f"/media/{output_filename}", "filename": output_filename,
                            "voice": voice, "engine": engine,
-                           "duration": round(get_media_duration_seconds(output_path), 3)})
+                           "duration": round(duration, 3)})
     except asyncio.CancelledError:
         update_job(job_id, status_value="cancelled", message="ملغاة.")
         raise
@@ -2197,55 +2372,45 @@ async def auto_reframe(body: AutoReframeRequest):
             "message": "تم إنشاء مهمة Auto Reframe.", "status_url": f"/api/video/jobs/{job_id}"}
 
 
-# ✅ [جديد] Endpoints لمزامنة الشفاه
-
 @router.get("/lipsync/status")
 async def lipsync_status():
-    """فحص توفر Wav2Lip على السيرفر."""
     available, message = wav2lip_available()
     return {
-        "available": available,
-        "message": message,
-        "wav2lip_dir": os.path.abspath(WAV2LIP_DIR),
-        "checkpoint": os.path.abspath(WAV2LIP_CHECKPOINT),
+        "available": available, "message": message,
+        "engine": "Wav2Lip-ONNX",
+        "dir": os.path.abspath(WAV2LIP_ONNX_DIR),
+        "model": os.path.abspath(WAV2LIP_ONNX_MODEL),
+        "script": os.path.abspath(os.path.join(WAV2LIP_ONNX_DIR, WAV2LIP_ONNX_SCRIPT)),
         "python": WAV2LIP_PYTHON,
     }
 
 
 @router.post("/lipsync", status_code=status.HTTP_202_ACCEPTED)
 async def lipsync_video(body: LipsyncRequest):
-    """إنشاء مهمة مزامنة الشفاه باستخدام Wav2Lip + مقاطع الدبلجة."""
     video_path = _resolve_media_path(body.video_url)
-
     resolved_segments = []
     for seg in body.segments:
         audio_path = _resolve_media_path(seg.audio_url)
         if seg.end <= seg.start:
             continue
         resolved_segments.append({
-            "start": seg.start,
-            "end": seg.end,
-            "gain": seg.gain,
-            "audio_path": audio_path,
+            "start": seg.start, "end": seg.end,
+            "gain": seg.gain, "audio_path": audio_path,
         })
-
     if not resolved_segments:
         raise HTTPException(status_code=400, detail="لا توجد مقاطع دبلجة صالحة.")
-
     resolved_segments.sort(key=lambda s: s["start"])
 
     job_id = create_job("lipsync")
-    task = asyncio.create_task(
-        run_lipsync_job(job_id, video_path, resolved_segments, body.total_duration)
-    )
+    task = asyncio.create_task(run_lipsync_job(
+        job_id, video_path, resolved_segments, body.total_duration,
+        body.max_speed_factor, body.background_volume,
+    ))
     with JOBS_LOCK:
         if job_id in JOBS:
             JOBS[job_id]["task"] = task
-
     return {
-        "status": "queued",
-        "job_id": job_id,
-        "progress": 0,
+        "status": "queued", "job_id": job_id, "progress": 0,
         "message": "تم إنشاء مهمة مزامنة الشفاه.",
         "status_url": f"/api/video/jobs/{job_id}",
     }
@@ -2287,8 +2452,10 @@ async def list_piper_voices():
 async def create_tts(body: TTSRequest):
     voice = ARABIC_VOICES[body.dialect][body.gender]
     job_id = create_job("tts")
-    task = asyncio.create_task(run_tts_job(job_id, body.text, voice, body.rate, body.pitch,
-                                           body.engine, body.piper_voice))
+    task = asyncio.create_task(run_tts_job(
+        job_id, body.text, voice, body.rate, body.pitch,
+        body.engine, body.piper_voice,
+    ))
     with JOBS_LOCK:
         if job_id in JOBS:
             JOBS[job_id]["task"] = task

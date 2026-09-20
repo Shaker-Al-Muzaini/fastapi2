@@ -1,18 +1,14 @@
 import os
-
-# ===========================================================================
-# ✅ إعداد مسارات Wav2Lip — يجب أن يكون قبل أي استيراد لـ routers.video
-# ===========================================================================
-os.environ["WAV2LIP_DIR"] = r"D:\python-project\Wav2Lip"
-os.environ["WAV2LIP_CHECKPOINT"] = r"D:\python-project\Wav2Lip\checkpoints\wav2lip_gan.pth"
-os.environ["WAV2LIP_PYTHON"] = r"D:\python-project\venv\Scripts\python.exe"
-
+import sys
+os.environ["WAV2LIP_ONNX_DIR"] = r"D:\python-project\Wav2Lip-Onnx"
+os.environ["WAV2LIP_ONNX_MODEL"] = r"D:\python-project\Wav2Lip-Onnx\models\wav2lip_gan.onnx"
+os.environ["WAV2LIP_ONNX_SCRIPT"] = "inference_onnxModel.py"
+os.environ["WAV2LIP_PYTHON"] = sys.executable
 # 🔍 تشخيص — يظهر في terminal عند بدء السيرفر
-print("=" * 70)
-print("[BOOT] WAV2LIP_DIR        =", os.environ["WAV2LIP_DIR"])
-print("[BOOT] WAV2LIP_CHECKPOINT =", os.environ["WAV2LIP_CHECKPOINT"])
-print("[BOOT] WAV2LIP_PYTHON     =", os.environ["WAV2LIP_PYTHON"])
-print("=" * 70)
+print("[BOOT] WAV2LIP_ONNX_DIR    =", os.environ["WAV2LIP_ONNX_DIR"])
+print("[BOOT] WAV2LIP_ONNX_MODEL  =", os.environ["WAV2LIP_ONNX_MODEL"])
+print("[BOOT] WAV2LIP_ONNX_SCRIPT =", os.environ["WAV2LIP_ONNX_SCRIPT"])
+print("[BOOT] WAV2LIP_PYTHON      =", os.environ["WAV2LIP_PYTHON"])
 
 
 # ===========================================================================
